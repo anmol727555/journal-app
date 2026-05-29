@@ -300,8 +300,21 @@ export default function App() {
       const fileContent = JSON.stringify(topicsList);
 
       if (files.length > 0) {
-        const fileId = files[0].id;
+        // Sort newest modified first
+        const sortedFiles = [...files].sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+        const fileId = sortedFiles[0].id;
+        
         await GoogleDriveSync.updateCustomFileContent(googleAccessToken, fileId, 'application/json', fileContent);
+        
+        // Auto de-duplicate: delete older files with the same name asynchronously in the background
+        if (sortedFiles.length > 1) {
+          console.warn(`Found ${sortedFiles.length} duplicate database files. Self-healing...`);
+          for (let i = 1; i < sortedFiles.length; i++) {
+            GoogleDriveSync.deleteGoogleDoc(googleAccessToken, sortedFiles[i].id)
+              .then(() => console.log(`Successfully purged duplicate database file: ${sortedFiles[i].id}`))
+              .catch(err => console.error('Failed to purge duplicate file:', err));
+          }
+        }
         console.log('Learning Hub DB synchronized successfully.');
       } else {
         await GoogleDriveSync.createCustomFile(googleAccessToken, learningFolderId, filename, 'application/json', fileContent);
@@ -326,7 +339,10 @@ export default function App() {
       const files = await GoogleDriveSync.findFileByName(token, learningFolderId, filename);
 
       if (files.length > 0) {
-        const fileId = files[0].id;
+        // Sort newest modified first
+        const sortedFiles = [...files].sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+        const fileId = sortedFiles[0].id;
+        
         const rawContent = await GoogleDriveSync.downloadCustomFileContent(token, fileId);
 
         let remoteTopics = [];
@@ -345,6 +361,16 @@ export default function App() {
             .catch(err => console.error('Failed to update remote DB after merge:', err));
           return merged;
         });
+
+        // Auto de-duplicate: delete older files with the same name asynchronously in the background
+        if (sortedFiles.length > 1) {
+          console.warn(`Found ${sortedFiles.length} duplicate database files. Self-healing...`);
+          for (let i = 1; i < sortedFiles.length; i++) {
+            GoogleDriveSync.deleteGoogleDoc(token, sortedFiles[i].id)
+              .then(() => console.log(`Successfully purged duplicate database file: ${sortedFiles[i].id}`))
+              .catch(err => console.error('Failed to purge duplicate file:', err));
+          }
+        }
 
         triggerToast('Learning Hub DB synchronized with Google Drive.', 'success');
       } else {
