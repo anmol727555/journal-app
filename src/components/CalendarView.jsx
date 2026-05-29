@@ -34,6 +34,7 @@ export default function CalendarView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalEntries, setModalEntries] = useState([]);
   const [activeModalEntryIndex, setActiveModalEntryIndex] = useState(0);
+  const [modalView, setModalView] = useState('list'); // 'list' or 'detail'
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -144,6 +145,7 @@ export default function CalendarView({
   const handleDayClick = (day) => {
     const dayEntries = entriesByDate[day.dateStr] || [];
     setSelectedDateStr(day.dateStr);
+    setModalView('list');
     
     if (dayEntries.length > 0) {
       setModalEntries(dayEntries);
@@ -291,38 +293,46 @@ export default function CalendarView({
                   '--day-theme-color-rgb': 'var(--color-accent-rgb)'
                 } : null}
               >
-                <div className="day-cell-header">
-                  <span className="day-number">{day.dayNum}</span>
-                  {isDayToday && <span className="today-badge">TODAY</span>}
+                {/* 1. DESKTOP VIEW: Detailed Card Content */}
+                <div className="day-cell-desktop-content">
+                  <div className="day-cell-header">
+                    <span className="day-number">{day.dayNum}</span>
+                    {isDayToday && <span className="today-badge">TODAY</span>}
+                  </div>
+
+                  {hasNotes && (
+                    <div className="day-cell-content">
+                      {/* Visual note indicator pills */}
+                      <div className="notes-indicator-pill">
+                        <span className="indicator-emoji">{moodEmoji || '✍️'}</span>
+                        <span className="indicator-count">
+                          {dayEntries.length === 1 ? '1 Reflection' : `${dayEntries.length} Logs`}
+                        </span>
+                      </div>
+
+                      {/* Miniature title previews */}
+                      <div className="day-mini-previews">
+                        {dayEntries.map((e) => (
+                          <div key={e.id} className="mini-title-line">
+                            • {e.title || 'Untitled'}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!hasNotes && day.isCurrentMonth && (
+                    <div className="day-cell-empty-hover">
+                      <Plus size={14} className="empty-add-icon" />
+                      <span>Reflect</span>
+                    </div>
+                  )}
                 </div>
 
-                {hasNotes && (
-                  <div className="day-cell-content">
-                    {/* Visual note indicator pills */}
-                    <div className="notes-indicator-pill">
-                      <span className="indicator-emoji">{moodEmoji || '✍️'}</span>
-                      <span className="indicator-count">
-                        {dayEntries.length === 1 ? '1 Reflection' : `${dayEntries.length} Logs`}
-                      </span>
-                    </div>
-
-                    {/* Miniature title previews */}
-                    <div className="day-mini-previews">
-                      {dayEntries.map((e, eIdx) => (
-                        <div key={e.id} className="mini-title-line">
-                          • {e.title || 'Untitled'}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {!hasNotes && day.isCurrentMonth && (
-                  <div className="day-cell-empty-hover">
-                    <Plus size={14} className="empty-add-icon" />
-                    <span>Reflect</span>
-                  </div>
-                )}
+                {/* 2. MOBILE VIEW: Minimal Centered Square Content */}
+                <div className="day-cell-mobile-content">
+                  <span className="day-number">{day.dayNum}</span>
+                </div>
               </div>
             );
           })}
@@ -347,101 +357,146 @@ export default function CalendarView({
             {/* Modal Body */}
             <div className="modal-body-container">
               {modalEntries.length > 0 ? (
-                <>
-                  {/* Multi-entry Tab Header if more than 1 entry */}
-                  {modalEntries.length > 1 && (
-                    <div className="modal-tabs-header">
-                      {modalEntries.map((e, idx) => (
-                        <button
+                modalView === 'list' ? (
+                  <div className="modal-reflection-list">
+                    {modalEntries.map((e, index) => {
+                      const truncatedExcerpt = e.content 
+                        ? e.content.replace(/>\s*Prompt:[^\n]*\n?/g, '').slice(0, 85) + (e.content.length > 85 ? '...' : '')
+                        : 'No additional thoughts written...';
+                      return (
+                        <div 
                           key={e.id}
-                          className={`modal-tab-button ${idx === activeModalEntryIndex ? 'active' : ''}`}
-                          onClick={() => setActiveModalEntryIndex(idx)}
+                          className="modal-reflection-list-item"
+                          onClick={() => {
+                            setActiveModalEntryIndex(index);
+                            setModalView('detail');
+                          }}
                         >
-                          <span className="tab-mood-emoji">{MOODS[e.mood]?.emoji || '✍️'}</span>
-                          <span className="tab-title-text">{e.title || `Entry ${idx + 1}`}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Active Note Content details */}
-                  <div className="modal-note-card">
-                    <div className="modal-note-top-row">
-                      <h3 className="modal-note-title">{activeModalEntry.title || 'Untitled Reflection'}</h3>
-                      
-                      <div className="modal-note-badges">
-                        {MOODS[activeModalEntry.mood] && (
-                          <span className="card-mood-badge">
-                            {MOODS[activeModalEntry.mood].emoji} {MOODS[activeModalEntry.mood].label}
-                          </span>
-                        )}
-                        {activeModalEntry.weather && WEATHER[activeModalEntry.weather] && (
-                          <span className="card-mood-badge">
-                            {WEATHER[activeModalEntry.weather].emoji} {WEATHER[activeModalEntry.weather].label}
-                          </span>
-                        )}
-                        {activeModalEntry.wordCount > 0 && (
-                          <span className="card-mood-badge" style={{ opacity: 0.8 }}>
-                            <BookOpen size={10} /> {activeModalEntry.wordCount} words
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Image Attachment inside Modal if exists */}
-                    {activeModalEntry.imageUrl && (
-                      <div className="modal-note-image">
-                        <img src={activeModalEntry.imageUrl} alt={activeModalEntry.title} />
-                      </div>
-                    )}
-
-                    {/* Content Scroll Area */}
-                    <div className={`modal-note-content font-${activeModalEntry.fontType || 'sans'}`}>
-                      {activeModalEntry.content ? (
-                        activeModalEntry.content.split('\n').map((para, idx) => {
-                          if (para.trim().startsWith('> Prompt:')) {
-                            return (
-                              <blockquote key={idx} className="modal-blockquote">
-                                {para.replace(/^>\s*/, '')}
-                              </blockquote>
-                            );
-                          }
-                          return para.trim() ? <p key={idx} style={{ marginBottom: '1rem' }}>{para}</p> : null;
-                        })
-                      ) : (
-                        <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No body text written.</p>
-                      )}
-                    </div>
-
-                    {/* Action Bar inside Note */}
-                    <div className="modal-note-footer">
-                      <div className="modal-tags-row">
-                        {activeModalEntry.tags?.map((t, idx) => (
-                          <span key={idx} className="tag-pill">#{t}</span>
-                        ))}
-                      </div>
-
-                      <div className="modal-actions-buttons">
-                        <button 
-                          className="secondary-btn danger-hover-btn"
-                          onClick={() => handleDeleteFromModal(activeModalEntry.id)}
-                          title="Erase reflection"
-                        >
-                          <Trash2 size={14} />
-                          Delete
-                        </button>
-                        <button 
-                          className="primary-btn"
-                          onClick={() => handleEditFromModal(activeModalEntry.id)}
-                          title="Open in Zen Editor"
-                        >
-                          <Edit size={14} />
-                          Edit Note
-                        </button>
-                      </div>
-                    </div>
+                          <div className="list-item-left">
+                            <div className="list-item-emoji">{MOODS[e.mood]?.emoji || '✍️'}</div>
+                          </div>
+                          <div className="list-item-main">
+                            <h4 className="list-item-title">{e.title || 'Untitled Reflection'}</h4>
+                            <p className="list-item-excerpt">{truncatedExcerpt}</p>
+                            <div className="list-item-footer">
+                              {e.mood && <span className="badge">{MOODS[e.mood]?.label}</span>}
+                              {e.weather && WEATHER[e.weather] && <span className="badge">{WEATHER[e.weather]?.emoji} {WEATHER[e.weather]?.label}</span>}
+                              {e.wordCount > 0 && <span className="badge">{e.wordCount} words</span>}
+                            </div>
+                          </div>
+                          <div className="list-item-arrow">
+                            <ChevronRight size={16} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    <button 
+                      className="secondary-btn create-reflection-inline-btn" 
+                      onClick={handleNewEntryForDate}
+                      style={{ width: '100%', marginTop: '1rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                    >
+                      <Plus size={16} /> Write another reflection
+                    </button>
                   </div>
-                </>
+                ) : (
+                  <>
+                    {/* Active Note Content details */}
+                    <div className="modal-note-card animate-fade-in">
+                      {/* Back to List Button */}
+                      <button 
+                        className="secondary-btn modal-back-btn" 
+                        onClick={() => setModalView('list')}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          marginBottom: '1rem',
+                          padding: '0.4rem 0.75rem',
+                          fontSize: '0.8rem',
+                          width: 'fit-content'
+                        }}
+                      >
+                        <ChevronLeft size={14} /> Back to reflections list
+                      </button>
+
+                      <div className="modal-note-top-row">
+                        <h3 className="modal-note-title">{activeModalEntry.title || 'Untitled Reflection'}</h3>
+                        
+                        <div className="modal-note-badges">
+                          {MOODS[activeModalEntry.mood] && (
+                            <span className="card-mood-badge">
+                              {MOODS[activeModalEntry.mood].emoji} {MOODS[activeModalEntry.mood].label}
+                            </span>
+                          )}
+                          {activeModalEntry.weather && WEATHER[activeModalEntry.weather] && (
+                            <span className="card-mood-badge">
+                              {WEATHER[activeModalEntry.weather].emoji} {WEATHER[activeModalEntry.weather].label}
+                            </span>
+                          )}
+                          {activeModalEntry.wordCount > 0 && (
+                            <span className="card-mood-badge" style={{ opacity: 0.8 }}>
+                              <BookOpen size={10} /> {activeModalEntry.wordCount} words
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Image Attachment inside Modal if exists */}
+                      {activeModalEntry.imageUrl && (
+                        <div className="modal-note-image">
+                          <img src={activeModalEntry.imageUrl} alt={activeModalEntry.title} />
+                        </div>
+                      )}
+
+                      {/* Content Scroll Area */}
+                      <div className={`modal-note-content font-${activeModalEntry.fontType || 'sans'}`}>
+                        {activeModalEntry.content ? (
+                          activeModalEntry.content.split('\n').map((para, idx) => {
+                            if (para.trim().startsWith('> Prompt:')) {
+                              return (
+                                <blockquote key={idx} className="modal-blockquote">
+                                  {para.replace(/^>\s*/, '')}
+                                </blockquote>
+                              );
+                            }
+                            return para.trim() ? <p key={idx} style={{ marginBottom: '1rem' }}>{para}</p> : null;
+                          })
+                        ) : (
+                          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No body text written.</p>
+                        )}
+                      </div>
+
+                      {/* Action Bar inside Note */}
+                      <div className="modal-note-footer">
+                        <div className="modal-tags-row">
+                          {activeModalEntry.tags?.map((t, idx) => (
+                            <span key={idx} className="tag-pill">#{t}</span>
+                          ))}
+                        </div>
+
+                        <div className="modal-actions-buttons">
+                          <button 
+                            className="secondary-btn danger-hover-btn"
+                            onClick={() => handleDeleteFromModal(activeModalEntry.id)}
+                            title="Erase reflection"
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                          <button 
+                            className="primary-btn"
+                            onClick={() => handleEditFromModal(activeModalEntry.id)}
+                            title="Open in Zen Editor"
+                          >
+                            <Edit size={14} />
+                            Edit Note
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )
               ) : (
                 /* Empty day placeholder inside Modal */
                 <div className="modal-empty-day">

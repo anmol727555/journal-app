@@ -2028,6 +2028,18 @@ input:checked + .slider-round:before {
   overflow: hidden;
 }
 
+.day-cell-mobile-content {
+  display: none !important;
+}
+
+.day-cell-desktop-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .calendar-day-cell:hover {
   transform: translateY(-2px);
   border-color: var(--border-glass-active);
@@ -2473,10 +2485,10 @@ input:checked + .slider-round:before {
     justify-content: center;
   }
   .calendar-days-grid {
-    grid-auto-rows: minmax(85px, 1fr);
+    grid-auto-rows: auto;
   }
   .calendar-day-cell {
-    min-height: 85px;
+    min-height: auto;
     padding: 0.5rem;
   }
   .day-mini-previews {
@@ -2492,10 +2504,10 @@ input:checked + .slider-round:before {
     display: inline;
   }
   .calendar-days-grid {
-    grid-auto-rows: minmax(70px, 1fr);
+    grid-auto-rows: auto;
   }
   .calendar-day-cell {
-    min-height: 70px;
+    min-height: auto;
     padding: 0.35rem;
   }
   .notes-indicator-pill {
@@ -2511,10 +2523,6 @@ input:checked + .slider-round:before {
   .calendar-modal-content {
     max-height: 90vh;
   }
-}
-
-.collapsed-banana-mascot:hover {
-  transform: scale(1.15) rotate(12deg);
 }
 
 /* ==========================================================================
@@ -2692,3 +2700,311 @@ input:checked + .slider-round:before {
     justify-content: center;
   }
 }
+
+/* ==========================================================================
+   PREMIUM CALENDAR SQUARE CELLS & MODAL REFLECTION LIST STYLING
+   ========================================================================== */
+
+/* Calendar Modal List styling */
+.modal-reflection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-top: 0.5rem;
+}
+
+.modal-reflection-list-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-glass);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  text-align: left;
+}
+
+.modal-reflection-list-item:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+  background: var(--bg-glass-hover);
+  box-shadow: 0 8px 24px rgba(var(--color-accent-rgb), 0.12);
+}
+
+.modal-reflection-list-item .list-item-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(var(--color-accent-rgb), 0.08);
+  border: 1px solid rgba(var(--color-accent-rgb), 0.15);
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.modal-reflection-list-item .list-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.modal-reflection-list-item .list-item-title {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.modal-reflection-list-item .list-item-excerpt {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modal-reflection-list-item .list-item-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.modal-reflection-list-item .list-item-footer .badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-glass);
+  color: var(--text-secondary);
+}
+
+.modal-reflection-list-item .list-item-arrow {
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.modal-reflection-list-item:hover .list-item-arrow {
+  color: var(--color-accent);
+  transform: translateX(3px);
+}
+
+.create-reflection-inline-btn {
+  border: 1px dashed var(--border-glass-active) !important;
+  background: transparent !important;
+  font-weight: 600 !important;
+}
+
+.create-reflection-inline-btn:hover {
+  border-style: solid !important;
+  border-color: var(--color-accent) !important;
+  color: var(--color-accent) !important;
+  background: rgba(var(--color-accent-rgb), 0.05) !important;
+}
+
+/* Modal Back Button styling */
+.modal-back-btn {
+  border: 1px solid var(--border-glass-active) !important;
+  background: var(--bg-glass-hover) !important;
+  color: var(--text-primary) !important;
+  transition: var(--transition-smooth) !important;
+}
+
+.modal-back-btn:hover {
+  background: var(--text-primary) !important;
+  color: var(--bg-secondary) !important;
+}
+
+/* Calendar month/year selection overflow fix */
+@media (max-width: 500px) {
+  .calendar-controls {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 0.75rem !important;
+  }
+  
+  .select-dropdown-container {
+    width: 100% !important;
+    order: -1 !important; /* Puts dropdowns on top, taking up full width */
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  .calendar-select {
+    flex-grow: 1;
+    text-align: center;
+  }
+  
+  .calendar-controls .icon-only-btn, 
+  .calendar-controls .today-btn {
+    flex-grow: 1; /* Distributes buttons evenly on the bottom row */
+    justify-content: center;
+  }
+}
+
+/* Mobile-Only Calendar Square & Minimal Overrides */
+@media (max-width: 900px) {
+  .day-cell-desktop-content {
+    display: none !important;
+  }
+  
+  .day-cell-mobile-content {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  
+  .calendar-days-grid {
+    grid-auto-rows: auto !important;
+  }
+  
+  .calendar-day-cell {
+    aspect-ratio: 1 !important;
+    min-height: auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 0.5rem !important;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Center number and style it */
+  .calendar-day-cell .day-number {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+  }
+  
+  /* Hide the top border indicator line on mobile has-notes cells */
+  .calendar-day-cell.has-notes::before {
+    display: none !important;
+  }
+  
+  /* Soft theme accent background glow for days with notes on mobile */
+  .calendar-day-cell.has-notes {
+    background: rgba(var(--day-theme-color-rgb), 0.14) !important;
+    border-color: rgba(var(--day-theme-color-rgb), 0.4) !important;
+  }
+  
+  .calendar-day-cell.has-notes .day-number {
+    color: var(--day-theme-color) !important;
+  }
+  
+  .calendar-day-cell.has-notes:hover {
+    background: rgba(var(--day-theme-color-rgb), 0.22) !important;
+    border-color: var(--day-theme-color) !important;
+    box-shadow: 0 4px 16px rgba(var(--day-theme-color-rgb), 0.15) !important;
+  }
+  
+  /* Today Highlight on mobile - thick glowing accent border, NO text label */
+  .calendar-day-cell.today {
+    border: 2.2px solid var(--color-accent) !important;
+    box-shadow: 0 0 12px rgba(var(--color-accent-rgb), 0.4) !important;
+  }
+  
+  .calendar-day-cell.today .day-number {
+    color: var(--color-accent) !important;
+    font-weight: 700 !important;
+  }
+
+  /* Reduce blank spaces & utilize horizontal room */
+  .main-content {
+    padding: 0.6rem !important; /* Reduces outer margin whitespace on mobile */
+  }
+  
+  .detail-reading-card {
+    padding: 1rem !important; /* Reduces inner whitespace inside details note */
+  }
+
+  .modal-body-container {
+    padding: 0.85rem !important;
+  }
+  
+  /* High-Contrast Standout Back Buttons */
+  .mobile-back-btn, 
+  .modal-back-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    padding: 0.55rem 0.9rem !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    border-radius: var(--radius-md) !important;
+    background: #0f172a !important; /* Premium dark charcoal/black */
+    color: #ffffff !important;
+    border: 1px solid #1e293b !important;
+    margin-bottom: 1.25rem !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    width: fit-content !important;
+  }
+
+  .mobile-back-btn:hover, 
+  .modal-back-btn:hover {
+    background: #000000 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25) !important;
+  }
+
+  /* Equal-width Badges Flex Grid utilizing empty space */
+  .detail-meta-row, 
+  .modal-note-badges {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    margin: 0.85rem 0 !important;
+    padding: 0 !important;
+  }
+
+  .detail-meta-item, 
+  .card-mood-badge {
+    flex-grow: 1 !important;
+    flex-basis: calc(50% - 0.25rem) !important; /* 2 columns, wrapping */
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border-glass) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.55rem 0.5rem !important;
+    font-size: 0.76rem !important;
+    margin: 0 !important;
+    text-align: center !important;
+    color: var(--text-secondary) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* If Google Sync indicator exists, let it span 100% of row for solid accent callout */
+  .detail-meta-item:last-child:nth-child(odd),
+  .card-mood-badge:last-child:nth-child(odd) {
+    flex-basis: 100% !important; /* Full width for the odd last child (e.g. 5th badge) */
+    background: rgba(var(--color-accent-rgb), 0.05) !important;
+    border-color: rgba(var(--color-accent-rgb), 0.2) !important;
+    color: var(--color-accent) !important;
+  }
+}
+

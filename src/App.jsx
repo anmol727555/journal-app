@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, Compass, Award, Settings as SettingsIcon, 
   Smile, Music, Volume2, Moon, Sun, Menu, X, Sparkles, LogOut, Check,
-  ChevronLeft, ChevronRight, Calendar, Banana
+  ChevronLeft, ChevronRight, Calendar, Feather
 } from 'lucide-react';
 
 // Import Custom Utilities & Components
@@ -654,7 +654,7 @@ export default function App() {
       {/* Mobile Top Header */}
       <header className="mobile-header">
         <div className="brand-logo" style={{ margin: 0 }}>
-          <Banana size={20} style={{ color: '#FCD34D' }} />
+          <Feather size={20} style={{ color: '#FCD34D' }} />
           <span>Reflections</span>
         </div>
         <button 
@@ -679,7 +679,7 @@ export default function App() {
           {/* Logo with Collapse Trigger */}
           <div className="brand-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '2.5rem', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Banana size={22} style={{ color: '#FCD34D' }} />
+              <Feather size={22} style={{ color: '#FCD34D' }} />
               {!isSidebarCollapsed && <span>Reflections</span>}
             </div>
             <button 
@@ -716,60 +716,13 @@ export default function App() {
             </ul>
           </nav>
 
-          {/* Premium Nano Banana Mascot Card */}
-          {!isSidebarCollapsed ? (
-            <div className="glass-panel sidebar-banana-card" style={{ 
-              margin: '1.5rem 0 0.5rem 0', 
-              padding: '0.85rem', 
-              borderRadius: 'var(--radius-lg)', 
-              textAlign: 'center',
-              border: '1px solid rgba(252, 211, 77, 0.25)',
-              background: 'rgba(252, 211, 77, 0.03)',
-              boxShadow: '0 8px 24px var(--shadow-color)',
-              position: 'relative',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: '-15%',
-                right: '-15%',
-                width: '60px',
-                height: '60px',
-                borderRadius: '50%',
-                background: 'rgba(252, 211, 77, 0.12)',
-                filter: 'blur(20px)',
-                pointerEvents: 'none'
-              }} />
-              <img src="/nano_banana.png" alt="Nano Banana Mascot" style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: 'var(--radius-md)',
-                objectFit: 'cover',
-                marginBottom: '0.4rem',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.4)'
-              }} />
-              <h5 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.1rem' }}>Fresh Reflections 🍌</h5>
-              <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', lineHeight: 1.3, margin: 0 }}>
-                Keep your mindfulness logs fresh, sweet, and pure!
-              </p>
-            </div>
-          ) : (
+          {/* Collapsed Mascot Placeholder */}
+          {isSidebarCollapsed && (
             <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 0.5rem 0' }}>
-              <img 
-                src="/nano_banana.png" 
-                alt="Nano Banana Mascot" 
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                  border: '2px solid rgba(252, 211, 77, 0.4)',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s'
-                }} 
-                className="collapsed-banana-mascot"
-                title="Reflections: Fresh & Sweet! 🍌"
+              <Feather 
+                size={18} 
+                style={{ color: '#FCD34D', cursor: 'pointer' }}
+                title="Reflections"
               />
             </div>
           )}
