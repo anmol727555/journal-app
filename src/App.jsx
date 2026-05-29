@@ -46,45 +46,6 @@ const DEFAULT_JOURNALS = [
   }
 ];
 
-// Helper to merge two sets of learning topics (Local + Remote)
-const mergeLearningTopics = (localTopics, remoteTopics) => {
-  const mergedMap = new Map();
-  
-  // Helper to merge two histories of sessions by date chronologically
-  const mergeHistories = (localHist, remoteHist) => {
-    const sessionMap = new Map();
-    (remoteHist || []).forEach(s => sessionMap.set(s.date, s));
-    (localHist || []).forEach(s => {
-      const existing = sessionMap.get(s.date);
-      if (!existing || JSON.stringify(s) !== JSON.stringify(existing)) {
-        sessionMap.set(s.date, s);
-      }
-    });
-    return Array.from(sessionMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
-  };
-
-  (remoteTopics || []).forEach(t => {
-    mergedMap.set(t.id, t);
-  });
-
-  (localTopics || []).forEach(t => {
-    const existing = mergedMap.get(t.id);
-    if (existing) {
-      mergedMap.set(t.id, {
-        ...existing,
-        name: t.name,
-        category: t.category,
-        color: t.color,
-        history: mergeHistories(t.history, existing.history)
-      });
-    } else {
-      mergedMap.set(t.id, t);
-    }
-  });
-
-  return Array.from(mergedMap.values());
-};
-
 export default function App() {
   // Global States
   const [entries, setEntries] = useState(() => {
@@ -156,6 +117,16 @@ export default function App() {
   });
 
   const isGoogleConnected = !!googleAccessToken && googleTokenExpiry > 0;
+
+  const googleAccessTokenRef = useRef(googleAccessToken);
+  useEffect(() => {
+    googleAccessTokenRef.current = googleAccessToken;
+  }, [googleAccessToken]);
+
+  const googleTokenExpiryRef = useRef(googleTokenExpiry);
+  useEffect(() => {
+    googleTokenExpiryRef.current = googleTokenExpiry;
+  }, [googleTokenExpiry]);
 
   // Sync statuses: 'idle', 'syncing', 'synced', 'error'
   const [syncStatus, setSyncStatus] = useState('idle');
@@ -289,14 +260,17 @@ export default function App() {
 
   // Upload Learning Hub DB content to Google Drive in the background (auto-sync on save)
   const uploadLearningTopicsToDrive = async (topicsList) => {
-    if (!googleAccessToken || Date.now() >= googleTokenExpiry) return;
+    const currentToken = googleAccessTokenRef.current;
+    const currentExpiry = googleTokenExpiryRef.current;
+
+    if (!currentToken || Date.now() >= currentExpiry) return;
 
     const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
     const filename = 'learning_data.db';
 
     try {
       setSyncStatus('syncing');
-      const files = await GoogleDriveSync.findFileByName(googleAccessToken, learningFolderId, filename);
+      const files = await GoogleDriveSync.findFileByName(currentToken, learningFolderId, filename);
       const fileContent = JSON.stringify(topicsList);
 
       if (files.length > 0) {
@@ -304,20 +278,20 @@ export default function App() {
         const sortedFiles = [...files].sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
         const fileId = sortedFiles[0].id;
         
-        await GoogleDriveSync.updateCustomFileContent(googleAccessToken, fileId, 'application/json', fileContent);
+        await GoogleDriveSync.updateCustomFileContent(currentToken, fileId, 'application/json', fileContent);
         
         // Auto de-duplicate: delete older files with the same name asynchronously in the background
         if (sortedFiles.length > 1) {
           console.warn(`Found ${sortedFiles.length} duplicate database files. Self-healing...`);
           for (let i = 1; i < sortedFiles.length; i++) {
-            GoogleDriveSync.deleteGoogleDoc(googleAccessToken, sortedFiles[i].id)
+            GoogleDriveSync.deleteGoogleDoc(currentToken, sortedFiles[i].id)
               .then(() => console.log(`Successfully purged duplicate database file: ${sortedFiles[i].id}`))
               .catch(err => console.error('Failed to purge duplicate file:', err));
           }
         }
         console.log('Learning Hub DB synchronized successfully.');
       } else {
-        await GoogleDriveSync.createCustomFile(googleAccessToken, learningFolderId, filename, 'application/json', fileContent);
+        await GoogleDriveSync.createCustomFile(currentToken, learningFolderId, filename, 'application/json', fileContent);
         triggerToast('Learning Hub DB created on Google Drive!', 'success');
       }
       setSyncStatus('synced');
@@ -327,8 +301,8 @@ export default function App() {
     }
   };
 
-  // Download, Merge and Upload Learning Hub DB with local state (mount refresh / manual sync)
-  const downloadAndMergeLearningTopics = async (token) => {
+  // Download Learning Hub DB content from Google Drive and overwrite local state (Pull sync)
+  const downloadLearningTopicsFromDrive = async (token) => {
     if (!token) return;
 
     const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
@@ -354,13 +328,10 @@ export default function App() {
           console.error('Failed to parse remote Learning Hub DB:', parseErr);
         }
 
-        setLearningTopics(localTopics => {
-          const merged = mergeLearningTopics(localTopics, remoteTopics);
-          // Overwrite remote with the newly merged set
-          GoogleDriveSync.updateCustomFileContent(token, fileId, 'application/json', JSON.stringify(merged))
-            .catch(err => console.error('Failed to update remote DB after merge:', err));
-          return merged;
-        });
+        // Overwrite local topics state with remote cloud database content
+        if (remoteTopics && Array.isArray(remoteTopics)) {
+          setLearningTopics(remoteTopics);
+        }
 
         // Auto de-duplicate: delete older files with the same name asynchronously in the background
         if (sortedFiles.length > 1) {
@@ -374,10 +345,8 @@ export default function App() {
 
         triggerToast('Learning Hub DB synchronized with Google Drive.', 'success');
       } else {
-        // File does not exist, upload our current local state to initialize it!
-        const fileContent = JSON.stringify(learningTopicsRef.current);
-        await GoogleDriveSync.createCustomFile(token, learningFolderId, filename, 'application/json', fileContent);
-        triggerToast('Learning Hub DB created on Google Drive.', 'success');
+        // DO NOT upload or overwrite remote database on download/pull if it does not exist!
+        console.log('No Learning Hub DB found on Google Drive.');
       }
       setSyncStatus('synced');
     } catch (err) {
@@ -388,16 +357,23 @@ export default function App() {
 
   // Wrapper for updating topics locally and triggering background auto-sync to cloud
   const updateAndSyncLearningTopics = (newTopicsOrUpdater) => {
-    setLearningTopics(prev => {
-      const updated = typeof newTopicsOrUpdater === 'function'
-        ? newTopicsOrUpdater(prev)
-        : newTopicsOrUpdater;
+    let updated;
+    if (typeof newTopicsOrUpdater === 'function') {
+      updated = newTopicsOrUpdater(learningTopicsRef.current);
+    } else {
+      updated = newTopicsOrUpdater;
+    }
 
-      if (googleAccessToken && Date.now() < googleTokenExpiry) {
-        uploadLearningTopicsToDrive(updated);
-      }
-      return updated;
-    });
+    // Update ref immediately so any subsequent rapid calls get the fresh state!
+    learningTopicsRef.current = updated;
+    setLearningTopics(updated);
+
+    const currentToken = googleAccessTokenRef.current;
+    const currentExpiry = googleTokenExpiryRef.current;
+
+    if (currentToken && Date.now() < currentExpiry) {
+      uploadLearningTopicsToDrive(updated);
+    }
   };
 
   // Handle ambient volume synchronization
@@ -457,7 +433,7 @@ export default function App() {
           setSyncStatus('synced');
           triggerToast('Google Drive permanently connected!', 'success');
           handleSyncFromGoogleDrive(tokens.access_token, currentFolderId);
-          downloadAndMergeLearningTopics(tokens.access_token);
+          downloadLearningTopicsFromDrive(tokens.access_token);
         } catch (err) {
           console.error('Failed to exchange auth code:', err);
           setSyncStatus('error');
@@ -474,7 +450,7 @@ export default function App() {
           setGoogleAccessToken(savedToken);
           setGoogleTokenExpiry(parseInt(savedExpiry));
           handleSyncFromGoogleDrive(savedToken, googleFolderId);
-          downloadAndMergeLearningTopics(savedToken);
+          downloadLearningTopicsFromDrive(savedToken);
         } else if (savedRefreshToken && savedClientId) {
           // Token expired or missing, but we have a refresh token! Run silent refresh.
           try {
@@ -493,7 +469,7 @@ export default function App() {
             
             triggerToast('Background Google Drive sync resumed.', 'success');
             handleSyncFromGoogleDrive(freshTokens.access_token, googleFolderId);
-            downloadAndMergeLearningTopics(freshTokens.access_token);
+            downloadLearningTopicsFromDrive(freshTokens.access_token);
           } catch (err) {
             console.error('Failed to silently refresh access token:', err);
           }
@@ -1016,7 +992,7 @@ export default function App() {
             onDisconnectGoogle={handleDisconnectGoogle}
             onSyncFromGoogleDrive={() => {
               handleSyncFromGoogleDrive(googleAccessToken, googleFolderId);
-              downloadAndMergeLearningTopics(googleAccessToken);
+              downloadLearningTopicsFromDrive(googleAccessToken);
             }}
             syncStatus={syncStatus}
           />
