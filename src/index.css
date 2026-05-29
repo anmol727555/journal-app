@@ -3008,3 +3008,178 @@ input:checked + .slider-round:before {
   }
 }
 
+/* --- Learning Hub Styles --- */
+.learning-split-layout {
+  display: flex;
+  gap: 2rem;
+  height: calc(100vh - 4.5rem);
+  overflow: hidden;
+}
+
+.learning-split-layout .dashboard-left-pane {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.learning-split-layout .left-pane-scrollable {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.learning-split-layout .dashboard-right-pane {
+  flex-grow: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.topics-list-item {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.topics-list-item:hover {
+  transform: translateY(-2px);
+  background: var(--bg-glass-hover) !important;
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
+}
+
+.topics-list-item.active {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.delete-topic-btn {
+  opacity: 0.3;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.topics-list-item:hover .delete-topic-btn {
+  opacity: 0.8;
+}
+
+.delete-topic-btn:hover {
+  color: hsl(0, 85%, 60%) !important;
+  opacity: 1 !important;
+}
+
+.consistency-cell {
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.consistency-cell:hover {
+  transform: scale(1.18);
+  z-index: 10;
+}
+
+.consistency-cell.selected {
+  transform: scale(1.1);
+}
+
+.timeline-session-item {
+  transition: transform 0.2s ease;
+}
+
+.timeline-session-item:hover {
+  transform: translateX(4px);
+}
+
+.delete-session-btn {
+  opacity: 0.4;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.timeline-session-item:hover .delete-session-btn {
+  opacity: 1;
+}
+
+.delete-session-btn:hover {
+  color: hsl(0, 85%, 60%) !important;
+}
+
+/* Switch styling for Toggle switches */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* Responsive Rules for Learning Hub */
+@media (max-width: 900px) {
+  .learning-split-layout {
+    flex-direction: column !important;
+    height: calc(100vh - 49px - 1.5rem) !important; /* Subtract mobile header and small padding */
+    overflow: hidden !important;
+    position: relative;
+    width: 100%;
+    gap: 0 !important;
+  }
+
+  .learning-split-layout .dashboard-left-pane, 
+  .learning-split-layout .dashboard-right-pane {
+    width: 100% !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+    margin-top: 0 !important;
+  }
+
+  /* When showing list view */
+  .learning-split-layout.show-list .dashboard-left-pane {
+    display: flex !important;
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .learning-split-layout.show-list .dashboard-right-pane {
+    display: none !important;
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  /* When showing detail view */
+  .learning-split-layout.show-detail .dashboard-left-pane {
+    display: none !important;
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+
+  .learning-split-layout.show-detail .dashboard-right-pane {
+    display: block !important;
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .learning-workspace-layout {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    overflow-y: auto !important;
+  }
+
+  .timeline-pane {
+    height: auto !important;
+    border-top: 1px solid var(--border-glass);
+    margin-top: 1.5rem;
+    padding-bottom: 2rem;
+  }
+
+  .timeline-scrollable {
+    overflow-y: visible !important;
+    height: auto !important;
+  }
+
+  .logger-form-fields {
+    gap: 0.85rem !important;
+  }
+}
+
+

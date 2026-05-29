@@ -366,5 +366,115 @@ export const GoogleDriveSync = {
       content,
       imageUrl
     };
+  },
+
+  /**
+   * Finds a file in Google Drive by its exact name within a specific folder.
+   */
+  findFileByName: async (accessToken, folderId, filename) => {
+    const query = `'${folderId}' in parents and name = '${filename}' and trashed = false`;
+    const fields = 'files(id, name, mimeType, modifiedTime)';
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to find file (Status: ${response.status})`);
+    }
+
+    const data = await response.json();
+    return data.files || [];
+  },
+
+  /**
+   * Creates a custom plain text or JSON file in a specific folder on Google Drive.
+   */
+  createCustomFile: async (accessToken, folderId, filename, mimeType, fileContent) => {
+    const boundary = 'solace_custom_file_upload_boundary';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+
+    const metadata = {
+      name: filename,
+      parents: folderId ? [folderId] : []
+    };
+
+    const multipartBody = 
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      `Content-Type: ${mimeType}; charset=UTF-8\r\n\r\n` +
+      fileContent +
+      closeDelim;
+
+    const response = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`
+        },
+        body: multipartBody
+      }
+    );
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to create file (Status: ${response.status})`);
+    }
+
+    return await response.json();
+  },
+
+  /**
+   * Overwrites the media content of an existing file on Google Drive.
+   */
+  updateCustomFileContent: async (accessToken, fileId, mimeType, fileContent) => {
+    const response = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,mimeType,modifiedTime`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': `${mimeType}; charset=UTF-8`
+        },
+        body: fileContent
+      }
+    );
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to update file media (Status: ${response.status})`);
+    }
+
+    return await response.json();
+  },
+
+  /**
+   * Downloads the raw content of a file on Google Drive.
+   */
+  downloadCustomFileContent: async (accessToken, fileId) => {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to download file (Status: ${response.status})`);
+    }
+
+    return await response.text();
   }
 };

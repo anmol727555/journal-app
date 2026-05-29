@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, Compass, Award, Settings as SettingsIcon, 
-  Smile, Music, Volume2, Moon, Sun, Menu, X, Sparkles, LogOut, Check,
+  Menu, X, Sparkles, LogOut,
   ChevronLeft, ChevronRight, Calendar, Feather
 } from 'lucide-react';
 
@@ -14,6 +14,7 @@ import ZenEditor from './components/ZenEditor';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
 import CalendarView from './components/CalendarView';
+import Learning from './components/Learning';
 
 // Default mock journals to populate the dashboard on first visit
 const DEFAULT_JOURNALS = [
@@ -45,6 +46,45 @@ const DEFAULT_JOURNALS = [
   }
 ];
 
+// Helper to merge two sets of learning topics (Local + Remote)
+const mergeLearningTopics = (localTopics, remoteTopics) => {
+  const mergedMap = new Map();
+  
+  // Helper to merge two histories of sessions by date chronologically
+  const mergeHistories = (localHist, remoteHist) => {
+    const sessionMap = new Map();
+    (remoteHist || []).forEach(s => sessionMap.set(s.date, s));
+    (localHist || []).forEach(s => {
+      const existing = sessionMap.get(s.date);
+      if (!existing || JSON.stringify(s) !== JSON.stringify(existing)) {
+        sessionMap.set(s.date, s);
+      }
+    });
+    return Array.from(sessionMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
+  (remoteTopics || []).forEach(t => {
+    mergedMap.set(t.id, t);
+  });
+
+  (localTopics || []).forEach(t => {
+    const existing = mergedMap.get(t.id);
+    if (existing) {
+      mergedMap.set(t.id, {
+        ...existing,
+        name: t.name,
+        category: t.category,
+        color: t.color,
+        history: mergeHistories(t.history, existing.history)
+      });
+    } else {
+      mergedMap.set(t.id, t);
+    }
+  });
+
+  return Array.from(mergedMap.values());
+};
+
 export default function App() {
   // Global States
   const [entries, setEntries] = useState(() => {
@@ -52,10 +92,20 @@ export default function App() {
     return saved ? JSON.parse(saved) : DEFAULT_JOURNALS;
   });
 
+  const [learningTopics, setLearningTopics] = useState(() => {
+    const saved = localStorage.getItem('solace_learning_topics');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const entriesRef = useRef(entries);
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
+
+  const learningTopicsRef = useRef(learningTopics);
+  useEffect(() => {
+    learningTopicsRef.current = learningTopics;
+  }, [learningTopics]);
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [editingEntry, setEditingEntry] = useState(null);
@@ -105,6 +155,8 @@ export default function App() {
     return saved ? parseInt(saved) : 0;
   });
 
+  const isGoogleConnected = !!googleAccessToken && googleTokenExpiry > 0;
+
   // Sync statuses: 'idle', 'syncing', 'synced', 'error'
   const [syncStatus, setSyncStatus] = useState('idle');
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
@@ -116,6 +168,7 @@ export default function App() {
     lofi: false,
     forest: false
   });
+  // eslint-disable-next-line no-unused-vars
   const [volume, setVolume] = useState(0.5);
 
   // Trigger floating visual toasts
@@ -234,6 +287,93 @@ export default function App() {
     }
   };
 
+  // Upload Learning Hub DB content to Google Drive in the background (auto-sync on save)
+  const uploadLearningTopicsToDrive = async (topicsList) => {
+    if (!googleAccessToken || Date.now() >= googleTokenExpiry) return;
+
+    const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
+    const filename = 'learning_data.db';
+
+    try {
+      setSyncStatus('syncing');
+      const files = await GoogleDriveSync.findFileByName(googleAccessToken, learningFolderId, filename);
+      const fileContent = JSON.stringify(topicsList);
+
+      if (files.length > 0) {
+        const fileId = files[0].id;
+        await GoogleDriveSync.updateCustomFileContent(googleAccessToken, fileId, 'application/json', fileContent);
+        console.log('Learning Hub DB synchronized successfully.');
+      } else {
+        await GoogleDriveSync.createCustomFile(googleAccessToken, learningFolderId, filename, 'application/json', fileContent);
+        triggerToast('Learning Hub DB created on Google Drive!', 'success');
+      }
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Failed to auto-sync Learning Hub DB to Drive:', err);
+      setSyncStatus('error');
+    }
+  };
+
+  // Download, Merge and Upload Learning Hub DB with local state (mount refresh / manual sync)
+  const downloadAndMergeLearningTopics = async (token) => {
+    if (!token) return;
+
+    const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
+    const filename = 'learning_data.db';
+
+    try {
+      setSyncStatus('syncing');
+      const files = await GoogleDriveSync.findFileByName(token, learningFolderId, filename);
+
+      if (files.length > 0) {
+        const fileId = files[0].id;
+        const rawContent = await GoogleDriveSync.downloadCustomFileContent(token, fileId);
+
+        let remoteTopics = [];
+        try {
+          if (rawContent && rawContent.trim()) {
+            remoteTopics = JSON.parse(rawContent);
+          }
+        } catch (parseErr) {
+          console.error('Failed to parse remote Learning Hub DB:', parseErr);
+        }
+
+        setLearningTopics(localTopics => {
+          const merged = mergeLearningTopics(localTopics, remoteTopics);
+          // Overwrite remote with the newly merged set
+          GoogleDriveSync.updateCustomFileContent(token, fileId, 'application/json', JSON.stringify(merged))
+            .catch(err => console.error('Failed to update remote DB after merge:', err));
+          return merged;
+        });
+
+        triggerToast('Learning Hub DB synchronized with Google Drive.', 'success');
+      } else {
+        // File does not exist, upload our current local state to initialize it!
+        const fileContent = JSON.stringify(learningTopicsRef.current);
+        await GoogleDriveSync.createCustomFile(token, learningFolderId, filename, 'application/json', fileContent);
+        triggerToast('Learning Hub DB created on Google Drive.', 'success');
+      }
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Failed to download & sync Learning Hub DB:', err);
+      setSyncStatus('error');
+    }
+  };
+
+  // Wrapper for updating topics locally and triggering background auto-sync to cloud
+  const updateAndSyncLearningTopics = (newTopicsOrUpdater) => {
+    setLearningTopics(prev => {
+      const updated = typeof newTopicsOrUpdater === 'function'
+        ? newTopicsOrUpdater(prev)
+        : newTopicsOrUpdater;
+
+      if (googleAccessToken && Date.now() < googleTokenExpiry) {
+        uploadLearningTopicsToDrive(updated);
+      }
+      return updated;
+    });
+  };
+
   // Handle ambient volume synchronization
   useEffect(() => {
     AmbientAudio.setVolume(volume);
@@ -291,6 +431,7 @@ export default function App() {
           setSyncStatus('synced');
           triggerToast('Google Drive permanently connected!', 'success');
           handleSyncFromGoogleDrive(tokens.access_token, currentFolderId);
+          downloadAndMergeLearningTopics(tokens.access_token);
         } catch (err) {
           console.error('Failed to exchange auth code:', err);
           setSyncStatus('error');
@@ -307,6 +448,7 @@ export default function App() {
           setGoogleAccessToken(savedToken);
           setGoogleTokenExpiry(parseInt(savedExpiry));
           handleSyncFromGoogleDrive(savedToken, googleFolderId);
+          downloadAndMergeLearningTopics(savedToken);
         } else if (savedRefreshToken && savedClientId) {
           // Token expired or missing, but we have a refresh token! Run silent refresh.
           try {
@@ -325,6 +467,7 @@ export default function App() {
             
             triggerToast('Background Google Drive sync resumed.', 'success');
             handleSyncFromGoogleDrive(freshTokens.access_token, googleFolderId);
+            downloadAndMergeLearningTopics(freshTokens.access_token);
           } catch (err) {
             console.error('Failed to silently refresh access token:', err);
           }
@@ -333,6 +476,7 @@ export default function App() {
     };
 
     parseAuthAndRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 1.5 Background Silent Token Refresher (Interval runs every 60 seconds)
@@ -377,6 +521,11 @@ export default function App() {
     localStorage.setItem('solace_journal_entries', JSON.stringify(entries));
   }, [entries]);
 
+  // Sync learning topics to localStorage
+  useEffect(() => {
+    localStorage.setItem('solace_learning_topics', JSON.stringify(learningTopics));
+  }, [learningTopics]);
+
   // 3. Sync configurations to localStorage
   useEffect(() => {
     localStorage.setItem('solace_userName', userName);
@@ -412,6 +561,7 @@ export default function App() {
   }, [isSidebarCollapsed]);
 
   // Toggle ambient sounds
+  // eslint-disable-next-line no-unused-vars
   const handleToggleSound = (soundId) => {
     const updatedState = !activeSounds[soundId];
     setActiveSounds(prev => ({
@@ -614,6 +764,7 @@ export default function App() {
 
   const handleClearAllData = () => {
     setEntries([]);
+    setLearningTopics([]);
     setUserName('reflective mind');
     setTheme('theme-midnight');
     setPin('');
@@ -643,6 +794,7 @@ export default function App() {
   // Sidebar Layout Navigation
   const navigationItems = [
     { id: 'dashboard', label: 'Journal Logs', icon: BookOpen },
+    { id: 'learning', label: 'Learning Hub', icon: Compass },
     { id: 'calendar', label: 'Calendar Grid', icon: Calendar },
     { id: 'analytics', label: 'Insights', icon: Award },
     { id: 'settings', label: 'Settings', icon: SettingsIcon }
@@ -789,7 +941,7 @@ export default function App() {
             onSave={handleSaveEntry}
             onCancel={() => { setEditingEntry(null); setCurrentView('dashboard'); }}
             onDelete={handleDeleteEntry}
-            isGoogleConnected={!!googleAccessToken && Date.now() < googleTokenExpiry}
+            isGoogleConnected={isGoogleConnected}
             syncStatus={syncStatus}
           />
         )}
@@ -800,6 +952,13 @@ export default function App() {
             onNewEntry={handleNewEntry}
             onEditEntry={handleEditEntry}
             onDeleteEntry={handleDeleteEntry}
+          />
+        )}
+
+        {currentView === 'learning' && (
+          <Learning 
+            topics={learningTopics}
+            setTopics={updateAndSyncLearningTopics}
           />
         )}
 
@@ -826,10 +985,13 @@ export default function App() {
             setGoogleClientSecret={setGoogleClientSecret}
             googleFolderId={googleFolderId}
             setGoogleFolderId={setGoogleFolderId}
-            isGoogleConnected={!!googleAccessToken && Date.now() < googleTokenExpiry}
+            isGoogleConnected={isGoogleConnected}
             onConnectGoogle={handleConnectGoogle}
             onDisconnectGoogle={handleDisconnectGoogle}
-            onSyncFromGoogleDrive={() => handleSyncFromGoogleDrive(googleAccessToken, googleFolderId)}
+            onSyncFromGoogleDrive={() => {
+              handleSyncFromGoogleDrive(googleAccessToken, googleFolderId);
+              downloadAndMergeLearningTopics(googleAccessToken);
+            }}
             syncStatus={syncStatus}
           />
         )}
