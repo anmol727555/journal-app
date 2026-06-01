@@ -2,12 +2,14 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   BookOpen, Compass, Award, Settings as SettingsIcon, 
   Menu, X, Sparkles, LogOut, User,
-  ChevronLeft, ChevronRight, Calendar, Feather, Cloud
+  ChevronLeft, ChevronRight, Calendar, Feather, Cloud,
+  GitFork
 } from 'lucide-react';
 
 // Import Custom Utilities & Components
 import { AmbientAudio } from './utils/audio';
 import { GoogleDriveSync } from './utils/googleDrive';
+import { analyzeContentForTags } from './utils/emotionLexicon';
 import LockScreen from './components/LockScreen';
 import Dashboard from './components/Dashboard';
 import ZenEditor from './components/ZenEditor';
@@ -17,6 +19,7 @@ const Analytics = lazy(() => import('./components/Analytics'));
 const Settings = lazy(() => import('./components/Settings'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const Learning = lazy(() => import('./components/Learning'));
+const SecondBrain = lazy(() => import('./components/SecondBrain'));
 
 // Import Contexts & Hooks
 import { useSettings } from './context/SettingsContext';
@@ -111,7 +114,40 @@ export default function App() {
 
   // Editor Actions
   const handleSaveEntry = async (savedData) => {
-    const targetEntry = await saveEntry(savedData);
+    // Map of moods to corresponding tags to enrich graph interlinking automatically
+    const moodTagMap = {
+      happy: 'joy',
+      calm: 'peace',
+      energetic: 'energy',
+      pensive: 'reflection',
+      anxious: 'anxiety',
+      sad: 'sadness'
+    };
+
+    let updatedTags = savedData.tags ? [...savedData.tags] : [];
+    if (savedData.mood && moodTagMap[savedData.mood]) {
+      const targetTag = moodTagMap[savedData.mood];
+      if (!updatedTags.includes(targetTag)) {
+        updatedTags.push(targetTag);
+      }
+    }
+
+    // Auto-tagging engine: If the user didn't specify a mood AND did not add any tags
+    // (or the only tag is the default 'synced' tag), run the lexicon-based scanner over the text content.
+    if ((!savedData.mood || savedData.mood.trim() === '') && 
+        (updatedTags.length === 0 || (updatedTags.length === 1 && updatedTags[0] === 'synced'))) {
+      const inferredTags = analyzeContentForTags(savedData.content);
+      if (inferredTags.length > 0) {
+        updatedTags = inferredTags;
+      }
+    }
+
+    const finalData = {
+      ...savedData,
+      tags: updatedTags
+    };
+
+    const targetEntry = await saveEntry(finalData);
     
     setEditingEntry(null);
     setCurrentView('dashboard');
@@ -192,6 +228,7 @@ export default function App() {
     { id: 'dashboard', label: 'Journal Logs', icon: BookOpen },
     { id: 'learning', label: 'Learning Hub', icon: Compass },
     { id: 'calendar', label: 'Calendar Grid', icon: Calendar },
+    { id: 'brain', label: 'Second Brain', icon: GitFork },
     { id: 'analytics', label: 'Insights', icon: Award },
     { id: 'settings', label: 'Settings', icon: SettingsIcon }
   ];
@@ -379,6 +416,9 @@ export default function App() {
           )}
           {currentView === 'calendar' && (
             <CalendarView entries={entries} onNewEntry={handleNewEntry} onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry} />
+          )}
+          {currentView === 'brain' && (
+            <SecondBrain entries={entries} onNewEntry={handleNewEntry} onEditEntry={handleEditEntry} onDeleteEntry={handleDeleteEntry} />
           )}
           {currentView === 'learning' && <Learning topics={learningTopics} setTopics={updateAndSyncLearningTopics} />}
           {currentView === 'analytics' && <Analytics entries={entries} />}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type MutableRefObject } from 'react';
 import { GoogleDriveSync } from '../utils/googleDrive';
 import { db, type JournalEntry, type LearningTopic } from '../utils/db';
+import { analyzeContentForTags } from '../utils/emotionLexicon';
 
 export function useGoogleDriveSync(
   entries: JournalEntry[], 
@@ -236,6 +237,18 @@ export function useGoogleDriveSync(
           currentEntries = currentEntries.map(e => {
             if (e.googleFileId === item.driveFile.id) {
               hasChanges = true;
+
+              // Lexicon Auto-Tagging on Sync Update:
+              // If the downloaded entry does not specify a mood, and current tags are empty/fallback 'synced',
+              // re-evaluate content to infer better tags.
+              let updatedTags = e.tags || [];
+              if ((!parsed.mood || parsed.mood.trim() === '') && (updatedTags.length === 0 || (updatedTags.length === 1 && updatedTags[0] === 'synced'))) {
+                const inferred = analyzeContentForTags(parsed.content);
+                if (inferred.length > 0) {
+                  updatedTags = inferred;
+                }
+              }
+
               return {
                 ...e,
                 title: item.driveFile.name,
@@ -243,6 +256,7 @@ export function useGoogleDriveSync(
                 imageUrl: parsed.imageUrl || e.imageUrl,
                 mood: parsed.mood || '',
                 weather: parsed.weather || '',
+                tags: updatedTags,
                 wordCount: parsed.content.split(/\s+/).filter(Boolean).length,
                 googleLastSynced: item.driveFile.modifiedTime
               };
@@ -258,6 +272,18 @@ export function useGoogleDriveSync(
       for (const file of newDriveFiles) {
         try {
           const parsed = await GoogleDriveSync.downloadAndParseGoogleDoc(token, file.id, file.name);
+          
+          // Lexicon Auto-Tagging on Sync Download:
+          // If the entry has no mood, run lexicon scanner to infer relevant tags.
+          // Fallback to ['synced'] if no matching keywords are found.
+          let inferredTags = ['synced'];
+          if (!parsed.mood || parsed.mood.trim() === '') {
+            const inferred = analyzeContentForTags(parsed.content);
+            if (inferred.length > 0) {
+              inferredTags = inferred;
+            }
+          }
+
           const newEntry: JournalEntry = {
             id: 'journal-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
             title: file.name,
@@ -265,7 +291,7 @@ export function useGoogleDriveSync(
             date: new Date(file.modifiedTime || Date.now()).toISOString().split('T')[0],
             mood: parsed.mood || '',
             weather: parsed.weather || '',
-            tags: ['synced'],
+            tags: inferredTags,
             imageUrl: parsed.imageUrl || '',
             fontType: 'serif',
             wordCount: parsed.content.split(/\s+/).filter(Boolean).length,
