@@ -360,8 +360,11 @@ export default function CalendarView({
                 modalView === 'list' ? (
                   <div className="modal-reflection-list">
                     {modalEntries.map((e, index) => {
-                      const truncatedExcerpt = e.content 
-                        ? e.content.replace(/>\s*Prompt:[^\n]*\n?/g, '').slice(0, 85) + (e.content.length > 85 ? '...' : '')
+                      const tempDiv = document.createElement('div');
+                      tempDiv.innerHTML = e.content || '';
+                      const plainText = tempDiv.textContent || tempDiv.innerText || '';
+                      const truncatedExcerpt = plainText 
+                        ? plainText.substring(0, 85) + (plainText.length > 85 ? '...' : '')
                         : 'No additional thoughts written...';
                       return (
                         <div 
@@ -450,22 +453,10 @@ export default function CalendarView({
                       )}
 
                       {/* Content Scroll Area */}
-                      <div className={`modal-note-content font-${activeModalEntry.fontType || 'sans'}`}>
-                        {activeModalEntry.content ? (
-                          activeModalEntry.content.split('\n').map((para, idx) => {
-                            if (para.trim().startsWith('> Prompt:')) {
-                              return (
-                                <blockquote key={idx} className="modal-blockquote">
-                                  {para.replace(/^>\s*/, '')}
-                                </blockquote>
-                              );
-                            }
-                            return para.trim() ? <p key={idx} style={{ marginBottom: '1rem' }}>{para}</p> : null;
-                          })
-                        ) : (
-                          <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No body text written.</p>
-                        )}
-                      </div>
+                      <div 
+                        className={`modal-note-content font-${activeModalEntry.fontType || 'sans'}`}
+                        dangerouslySetInnerHTML={{ __html: activeModalEntry.content || '<p style="color: var(--text-muted); font-style: italic;">No body text written.</p>' }}
+                      />
 
                       {/* Action Bar inside Note */}
                       <div className="modal-note-footer">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Save, X, Calendar, Smile, Sun, Tag, Image, Clock, BookOpen, 
-  Type, Trash, ArrowLeft, Sparkles, Bold, Italic, Underline, Link as LinkIcon
+  Type, Trash, ArrowLeft, Cloud, Bold, Italic, Underline, Link as LinkIcon
 } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -80,7 +80,7 @@ const MenuBar = ({ editor }) => {
 
 export default function ZenEditor({ entry, onSave, onCancel, onDelete, isGoogleConnected, syncStatus }) {
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [mood, setMood] = useState('');
   const [weather, setWeather] = useState('');
   const [tags, setTags] = useState([]);
@@ -195,7 +195,7 @@ export default function ZenEditor({ entry, onSave, onCancel, onDelete, isGoogleC
             </button>
           )}
           <button className="primary-btn" onClick={handleSave}>
-            <Save size={16} /> Save Reflection
+            <Save size={16} /> Save
           </button>
         </div>
       </div>
@@ -217,12 +217,12 @@ export default function ZenEditor({ entry, onSave, onCancel, onDelete, isGoogleC
           </div>
           {isGoogleConnected ? (
             <div className="editor-meta-item" style={{ cursor: 'default', borderColor: entry?.googleFileId ? 'rgba(0, 229, 206, 0.3)' : 'rgba(255, 255, 255, 0.1)', color: entry?.googleFileId ? 'var(--color-accent)' : 'inherit', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Sparkles size={14} style={{ animation: syncStatus === 'syncing' ? 'spin 1.5s linear infinite' : 'none', color: 'var(--color-accent)' }} />
+              <Cloud size={14} style={{ animation: syncStatus === 'syncing' ? 'spin 1.5s linear infinite' : 'none', color: 'var(--color-accent)' }} />
               <span>{syncStatus === 'syncing' ? 'Syncing to Drive...' : entry?.googleFileId ? 'Synced with Google Docs' : 'Pending Sync on Save'}</span>
             </div>
           ) : (
             <div className="editor-meta-item" style={{ cursor: 'default', opacity: 0.6, display: 'flex', alignItems: 'center', gap: '0.35rem' }} title="Connect your Google Drive in settings to back up reflections.">
-              <Sparkles size={14} style={{ opacity: 0.5 }} /><span>Offline (Local Mode)</span>
+              <Cloud size={14} style={{ opacity: 0.5 }} /><span>Offline (Local Mode)</span>
             </div>
           )}
         </div>
@@ -239,7 +239,6 @@ export default function ZenEditor({ entry, onSave, onCancel, onDelete, isGoogleC
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><BookOpen size={12} />{wordCount} words</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={12} />{readingTime} min read</span>
           </div>
-          <span>Draft saved locally in secure database</span>
         </div>
       </div>
 

@@ -1,93 +1,65 @@
-// Google Drive API Sync Utility using pure REST endpoints (OAuth 2.0 Authorization Code Flow)
+// Google Drive API Sync Utility using pure REST endpoints (Google Identity Services Popup client-side flow)
 
 export const GoogleDriveSync = {
   /**
-   * Generates the OAuth 2.0 redirection URL for Google Identity Services.
-   * Requests an authorization code with offline access to retrieve a refresh token.
+   * Finds a folder by name in the user's Google Drive root, or creates it if it doesn't exist.
+   * Returns the Folder ID.
    */
-  getAuthUrl: (clientId, redirectUri, folderId) => {
-    const baseUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
-    
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
-      state: folderId, // Pass folderId in state to preserve it across OAuth redirection
-      access_type: 'offline', // Crucial to request a refresh token
-      prompt: 'select_account consent' // Forces consent dialog to guarantee refresh token is returned
-    });
-    
-    return `${baseUrl}?${params.toString()}`;
-  },
+  findOrCreateFolder: async (accessToken, folderName) => {
+    const query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false`;
+    const fields = 'files(id, name)';
+    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}`;
 
-  /**
-   * Exchanges an authorization code for an access token and a refresh token.
-   */
-  exchangeCodeForTokens: async (clientId, clientSecret, redirectUri, authCode) => {
-    const bodyParams = {
-      code: authCode,
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-    };
-    
-    // Add client_secret if provided
-    if (clientSecret) {
-      bodyParams.client_secret = clientSecret;
-    }
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
+    const response = await fetch(searchUrl, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(bodyParams).toString()
+        'Authorization': `Bearer ${accessToken}`
+      }
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson.error_description || errorJson.error || `Token exchange failed (Status: ${response.status})`);
+      throw new Error(errorJson.error?.message || `Failed to search folder (Status: ${response.status})`);
     }
 
-    return await response.json(); // Returns { access_token, expires_in, refresh_token, token_type, scope }
-  },
+    const searchData = await response.json();
+    const existingFolders = searchData.files || [];
 
-  /**
-   * Refreshes the access token using a stored refresh token.
-   */
-  refreshAccessToken: async (clientId, clientSecret, refreshToken) => {
-    const bodyParams = {
-      client_id: clientId,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken
+    if (existingFolders.length > 0) {
+      return existingFolders[0].id;
+    }
+
+    // Create the folder if it doesn't exist
+    const createUrl = 'https://www.googleapis.com/drive/v3/files?fields=id';
+    const metadata = {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: ['root']
     };
 
-    if (clientSecret) {
-      bodyParams.client_secret = clientSecret;
-    }
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+    const createResponse = await fetch(createUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
       },
-      body: new URLSearchParams(bodyParams).toString()
+      body: JSON.stringify(metadata)
     });
 
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson.error_description || errorJson.error || `Token refresh failed (Status: ${response.status})`);
+    if (!createResponse.ok) {
+      const errorJson = await createResponse.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to create folder (Status: ${createResponse.status})`);
     }
 
-    return await response.json(); // Returns { access_token, expires_in, token_type, scope }
+    const createData = await createResponse.json();
+    return createData.id;
   },
 
   /**
    * Creates a native Google Doc inside a specific folder on Google Drive.
    * Leverages Drive API v3 multipart/related upload with HTML translation to embed images.
    */
-  createGoogleDoc: async (accessToken, folderId, title, content, imageUrl) => {
+  createGoogleDoc: async (accessToken, folderId, title, content, imageUrl, mood, weather) => {
     const boundary = 'solace_journal_upload_boundary';
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelim = `\r\n--${boundary}--`;
@@ -110,10 +82,6 @@ export const GoogleDriveSync = {
     };
 
     const escapedTitle = escapeHtml(title || 'Untitled Reflection');
-    const paragraphsHtml = (content || '')
-      .split('\n')
-      .map(p => p.trim() ? `<p style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #333333; margin-bottom: 12px;">${escapeHtml(p)}</p>` : '')
-      .join('');
 
     let imageHtml = '';
     if (imageUrl) {
@@ -122,6 +90,14 @@ export const GoogleDriveSync = {
           <img src="${imageUrl}" alt="Visual Reflection" style="max-width: 100%; max-height: 450px; border-radius: 8px;" />
         </div>
       `;
+    }
+
+    let metadataHtml = '';
+    if (mood || weather) {
+      const metaParts = [];
+      if (mood) metaParts.push(`mood=${mood}`);
+      if (weather) metaParts.push(`weather=${weather}`);
+      metadataHtml = `<p style="color: #888888; font-size: 10px; margin-top: 50px;">[SolaceMetadata: ${metaParts.join('; ')}]</p>`;
     }
 
     const htmlContent = `
@@ -134,8 +110,9 @@ export const GoogleDriveSync = {
         <h1 style="font-family: Georgia, serif; font-size: 24pt; font-weight: normal; color: #111111; margin-bottom: 5px;">${escapedTitle}</h1>
         ${imageHtml}
         <div style="margin-top: 20px;">
-          ${paragraphsHtml}
+          ${content || ''}
         </div>
+        ${metadataHtml}
       </body>
       </html>
     `;
@@ -174,7 +151,7 @@ export const GoogleDriveSync = {
   /**
    * Updates an existing Google Doc on Google Drive (both title and text/HTML content).
    */
-  updateGoogleDoc: async (accessToken, fileId, title, content, imageUrl) => {
+  updateGoogleDoc: async (accessToken, fileId, title, content, imageUrl, mood, weather) => {
     // 1. Update the document title (metadata) via PATCH
     const metaResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`,
@@ -209,10 +186,6 @@ export const GoogleDriveSync = {
     };
 
     const escapedTitle = escapeHtml(title || 'Untitled Reflection');
-    const paragraphsHtml = (content || '')
-      .split('\n')
-      .map(p => p.trim() ? `<p style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #333333; margin-bottom: 12px;">${escapeHtml(p)}</p>` : '')
-      .join('');
 
     let imageHtml = '';
     if (imageUrl) {
@@ -221,6 +194,14 @@ export const GoogleDriveSync = {
           <img src="${imageUrl}" alt="Visual Reflection" style="max-width: 100%; max-height: 450px; border-radius: 8px;" />
         </div>
       `;
+    }
+
+    let metadataHtml = '';
+    if (mood || weather) {
+      const metaParts = [];
+      if (mood) metaParts.push(`mood=${mood}`);
+      if (weather) metaParts.push(`weather=${weather}`);
+      metadataHtml = `<p style="color: #888888; font-size: 10px; margin-top: 50px;">[SolaceMetadata: ${metaParts.join('; ')}]</p>`;
     }
 
     const htmlContent = `
@@ -233,8 +214,9 @@ export const GoogleDriveSync = {
         <h1 style="font-family: Georgia, serif; font-size: 24pt; font-weight: normal; color: #111111; margin-bottom: 5px;">${escapedTitle}</h1>
         ${imageHtml}
         <div style="margin-top: 20px;">
-          ${paragraphsHtml}
+          ${content || ''}
         </div>
+        ${metadataHtml}
       </body>
       </html>
     `;
@@ -354,17 +336,37 @@ export const GoogleDriveSync = {
       imageUrl = img.getAttribute('src') || '';
     }
 
+    let mood = '';
+    let weather = '';
+
     // Extract text paragraphs
     const pTags = Array.from(body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li'));
-    const paragraphs = pTags
-      .map(p => p.textContent.trim())
-      .filter(text => text.length > 0);
+    const paragraphs = [];
+    
+    pTags.forEach(p => {
+      const text = p.textContent.trim();
+      if (!text) return;
+      
+      const metaMatch = text.match(/\[SolaceMetadata:\s*(.*?)\]/);
+      if (metaMatch) {
+        const parts = metaMatch[1].split(';');
+        parts.forEach(part => {
+          const [key, value] = part.split('=').map(s => s.trim());
+          if (key === 'mood') mood = value;
+          if (key === 'weather') weather = value;
+        });
+      } else {
+        paragraphs.push(text);
+      }
+    });
 
     const content = paragraphs.join('\n\n');
 
     return {
       content,
-      imageUrl
+      imageUrl,
+      mood,
+      weather
     };
   },
 
@@ -476,5 +478,23 @@ export const GoogleDriveSync = {
     }
 
     return await response.text();
+  },
+
+  /**
+   * Retrieves user profile details (name, given_name, family_name, picture) using OAuth2 userinfo endpoint.
+   */
+  getUserInfo: async (accessToken) => {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error?.message || `Failed to fetch user profile (Status: ${response.status})`);
+    }
+
+    return await response.json();
   }
 };

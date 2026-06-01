@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { 
   Search, Plus, Calendar, Smile, Sun, ChevronLeft, ChevronRight, BookOpen, 
-  Compass, Edit, Trash2, Tag, Sparkles 
+  Compass, Edit, Trash2, Tag, Cloud 
 } from 'lucide-react';
 
 const MOODS = {
@@ -347,13 +347,11 @@ export default function Dashboard({
                         <h4 className="list-item-title">{e.title || 'Untitled Reflection'}</h4>
                         <p className="list-item-preview">{truncatedPreview || 'Start typing...'}</p>
                         <div className="list-item-meta">
-                          {MOODS[e.mood] && (
-                            <span>{MOODS[e.mood].emoji} {MOODS[e.mood].label}</span>
-                          )}
                           {e.weather && WEATHER[e.weather] && (
-                            <span>• {WEATHER[e.weather].emoji}</span>
+                            <span>{WEATHER[e.weather].emoji}</span>
                           )}
-                          {wordCountText && <span>• {wordCountText}</span>}
+                          {e.weather && WEATHER[e.weather] && wordCountText && <span>•</span>}
+                          {wordCountText && <span>{wordCountText}</span>}
                         </div>
                       </div>
 
@@ -494,7 +492,7 @@ export default function Dashboard({
 
                 {activeEntry.googleFileId && (
                   <div className="detail-meta-item" style={{ color: 'var(--color-accent)', borderColor: 'rgba(var(--color-accent-rgb), 0.3)' }}>
-                    <Sparkles size={12} style={{ color: 'var(--color-accent)' }} />
+                    <Cloud size={12} style={{ color: 'var(--color-accent)' }} />
                     <span>Backed up to Google Drive</span>
                   </div>
                 )}
@@ -573,7 +571,7 @@ export default function Dashboard({
                     title="Edit reflection content and settings"
                   >
                     <Edit size={14} />
-                    Edit Entry
+                    Edit
                   </button>
                 </div>
               </div>

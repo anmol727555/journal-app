@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type MutableRefObject } from 'react';
 import { GoogleDriveSync } from '../utils/googleDrive';
-import { type JournalEntry, type LearningTopic } from '../utils/db';
+import { db, type JournalEntry, type LearningTopic } from '../utils/db';
 
 export function useGoogleDriveSync(
   entries: JournalEntry[], 
@@ -12,13 +12,27 @@ export function useGoogleDriveSync(
   triggerToast: (message: string, type?: 'info' | 'success' | 'error') => void
 ) {
   const [googleClientId, setGoogleClientId] = useState(() => {
-    return localStorage.getItem('solace_google_client_id') || '';
+    return import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('solace_google_client_id') || '587407107906-ds1jnb791rrtu8n7u4fde1e6i0kpgqj3.apps.googleusercontent.com';
   });
-  const [googleClientSecret, setGoogleClientSecret] = useState(() => {
-    return localStorage.getItem('solace_google_client_secret') || '';
+  
+  // Kept as dummy for backward compatibility during refactoring
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+
+  const [googleUserProfile, setGoogleUserProfile] = useState<{ name: string; picture: string } | null>(() => {
+    const saved = localStorage.getItem('solace_google_profile');
+    return saved ? JSON.parse(saved) : null;
   });
+
+  useEffect(() => {
+    if (googleUserProfile) {
+      localStorage.setItem('solace_google_profile', JSON.stringify(googleUserProfile));
+    } else {
+      localStorage.removeItem('solace_google_profile');
+    }
+  }, [googleUserProfile]);
+
   const [googleFolderId, setGoogleFolderId] = useState(() => {
-    return localStorage.getItem('solace_google_folder_id') || '1g4ATsJ7T3ri1aPzyvzHmeP1P7L5d5DVQ';
+    return localStorage.getItem('solace_google_folder_id') || '';
   });
   const [googleAccessToken, setGoogleAccessToken] = useState(() => {
     return sessionStorage.getItem('solace_google_access_token') || '';
@@ -31,7 +45,9 @@ export function useGoogleDriveSync(
   const isGoogleConnected = !!googleAccessToken && googleTokenExpiry > 0;
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
+  const tokenClientRef = useRef<any>(null);
   const googleAccessTokenRef = useRef(googleAccessToken);
+  
   useEffect(() => {
     googleAccessTokenRef.current = googleAccessToken;
     sessionStorage.setItem('solace_google_access_token', googleAccessToken);
@@ -48,12 +64,134 @@ export function useGoogleDriveSync(
   }, [googleClientId]);
 
   useEffect(() => {
-    localStorage.setItem('solace_google_client_secret', googleClientSecret);
-  }, [googleClientSecret]);
-
-  useEffect(() => {
     localStorage.setItem('solace_google_folder_id', googleFolderId);
   }, [googleFolderId]);
+
+  const initializeTokenClient = () => {
+    if (tokenClientRef.current) return;
+
+    // @ts-ignore
+    if (googleClientId && typeof window !== 'undefined' && window.google) {
+      try {
+        console.log('Initializing Google Identity Services Token Client...');
+        // @ts-ignore
+        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+          client_id: googleClientId,
+          scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              console.error('Google OAuth error:', tokenResponse);
+              triggerToast(`Authentication failed: ${tokenResponse.error}`, 'error');
+              setSyncStatus('error');
+              return;
+            }
+
+            const token = tokenResponse.access_token;
+            const expiryTime = Date.now() + parseInt(tokenResponse.expires_in) * 1000;
+
+            setGoogleAccessToken(token);
+            setGoogleTokenExpiry(expiryTime);
+            localStorage.setItem('solace_google_connected', 'true');
+
+            setSyncStatus('syncing');
+            try {
+              console.log('Fetching Google user profile details...');
+              const userInfo = await GoogleDriveSync.getUserInfo(token);
+              const profile = { name: userInfo.name || 'Google User', picture: userInfo.picture || '' };
+              setGoogleUserProfile(profile);
+
+              const resolvedFolderId = await GoogleDriveSync.findOrCreateFolder(token, 'Solace Journal');
+              setGoogleFolderId(resolvedFolderId);
+
+              triggerToast('Google Drive connected successfully!', 'success');
+
+              await handleSyncFromGoogleDrive(token, resolvedFolderId);
+              await downloadLearningTopicsFromDrive(token);
+            } catch (syncErr: any) {
+              console.error('Failed folder resolution or initial sync:', syncErr);
+              triggerToast(`Sync failed: ${syncErr.message}`, 'error');
+              setSyncStatus('error');
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Error initializing Google token client:', err);
+      }
+    }
+  };
+
+  // Initialize the Google Identity Services Token Client on load / ID change
+  useEffect(() => {
+    initializeTokenClient();
+  }, [googleClientId]);
+
+  // Session check and automatic silent refresh on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      const savedToken = sessionStorage.getItem('solace_google_access_token');
+      const savedExpiry = sessionStorage.getItem('solace_google_token_expiry');
+
+      if (savedToken && savedExpiry && Date.now() < parseInt(savedExpiry)) {
+        setGoogleAccessToken(savedToken);
+        setGoogleTokenExpiry(parseInt(savedExpiry));
+        const savedFolderId = localStorage.getItem('solace_google_folder_id') || googleFolderId;
+        if (savedFolderId) {
+          handleSyncFromGoogleDrive(savedToken, savedFolderId);
+        }
+        downloadLearningTopicsFromDrive(savedToken);
+      } else {
+        const wasConnected = localStorage.getItem('solace_google_connected') === 'true';
+        // @ts-ignore
+        if (wasConnected && googleClientId && typeof window !== 'undefined' && window.google) {
+          if (!tokenClientRef.current) {
+            initializeTokenClient();
+          }
+          setTimeout(() => {
+            if (tokenClientRef.current) {
+              console.log('Attempting automatic silent Google sign-in on mount...');
+              tokenClientRef.current.requestAccessToken({ prompt: 'none' });
+            }
+          }, 1000);
+        }
+      }
+    };
+
+    // @ts-ignore
+    if (typeof window !== 'undefined') {
+      // @ts-ignore
+      if (window.google) {
+        checkSession();
+      } else {
+        window.addEventListener('load', checkSession);
+        return () => window.removeEventListener('load', checkSession);
+      }
+    }
+  }, [googleClientId]);
+
+  // Background Silent Token Refresher (Interval runs every 60 seconds)
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    const checkAndRefresh = async () => {
+      const savedExpiry = sessionStorage.getItem('solace_google_token_expiry');
+      if (!savedExpiry) return;
+
+      const timeRemaining = parseInt(savedExpiry) - Date.now();
+      const tenMinutes = 10 * 60 * 1000;
+
+      if (timeRemaining < tenMinutes && tokenClientRef.current) {
+        try {
+          console.log('Silently renewing Google access token...');
+          tokenClientRef.current.requestAccessToken({ prompt: 'none' });
+        } catch (err) {
+          console.error('Failed to background renew Google access token:', err);
+        }
+      }
+    };
+
+    const interval = setInterval(checkAndRefresh, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [googleClientId]);
 
   const handleSyncFromGoogleDrive = async (token: string, folderId: string) => {
     if (!token || !folderId) return;
@@ -66,6 +204,7 @@ export function useGoogleDriveSync(
       let currentEntries = [...entriesRef.current];
       let hasChanges = false;
 
+      // 1. Process deletions
       const initialCount = currentEntries.length;
       currentEntries = currentEntries.filter(entry => {
         if (entry.googleFileId && !driveFileIds.has(entry.googleFileId)) {
@@ -76,6 +215,7 @@ export function useGoogleDriveSync(
       });
       const deletedCount = initialCount - currentEntries.length;
 
+      // 2. Identify new and updated files
       const localFileIds = new Set(currentEntries.map(e => e.googleFileId).filter(Boolean));
       const newDriveFiles = driveFiles.filter((f: any) => !localFileIds.has(f.id));
       const updatedDriveFiles: { entry: JournalEntry; driveFile: any }[] = [];
@@ -89,6 +229,7 @@ export function useGoogleDriveSync(
         }
       }
 
+      // 3. Download updated notes
       for (const item of updatedDriveFiles) {
         try {
           const parsed = await GoogleDriveSync.downloadAndParseGoogleDoc(token, item.driveFile.id, item.driveFile.name);
@@ -100,6 +241,8 @@ export function useGoogleDriveSync(
                 title: item.driveFile.name,
                 content: parsed.content,
                 imageUrl: parsed.imageUrl || e.imageUrl,
+                mood: parsed.mood || '',
+                weather: parsed.weather || '',
                 wordCount: parsed.content.split(/\s+/).filter(Boolean).length,
                 googleLastSynced: item.driveFile.modifiedTime
               };
@@ -111,6 +254,7 @@ export function useGoogleDriveSync(
         }
       }
 
+      // 4. Download new notes from Drive
       for (const file of newDriveFiles) {
         try {
           const parsed = await GoogleDriveSync.downloadAndParseGoogleDoc(token, file.id, file.name);
@@ -119,8 +263,8 @@ export function useGoogleDriveSync(
             title: file.name,
             content: parsed.content,
             date: new Date(file.modifiedTime || Date.now()).toISOString().split('T')[0],
-            mood: '',
-            weather: '',
+            mood: parsed.mood || '',
+            weather: parsed.weather || '',
             tags: ['synced'],
             imageUrl: parsed.imageUrl || '',
             fontType: 'serif',
@@ -132,6 +276,25 @@ export function useGoogleDriveSync(
           hasChanges = true;
         } catch (err) {
           console.error(`Failed to download new file ${file.id}:`, err);
+        }
+      }
+
+      // 5. Perform automatic first-time upload for local files that don't have a googleFileId
+      for (let i = 0; i < currentEntries.length; i++) {
+        const entry = currentEntries[i];
+        if (!entry.googleFileId) {
+          try {
+            console.log(`Uploading local-only note "${entry.title}" to Google Drive...`);
+            const uploadResult = await GoogleDriveSync.createGoogleDoc(token, folderId, entry.title, entry.content, entry.imageUrl, entry.mood, entry.weather);
+            currentEntries[i] = {
+              ...entry,
+              googleFileId: uploadResult.id,
+              googleLastSynced: uploadResult.modifiedTime
+            };
+            hasChanges = true;
+          } catch (uploadErr) {
+            console.error(`Failed to upload local note ${entry.id} during sync:`, uploadErr);
+          }
         }
       }
 
@@ -158,7 +321,7 @@ export function useGoogleDriveSync(
     const currentToken = googleAccessTokenRef.current;
     const currentExpiry = googleTokenExpiryRef.current;
     if (!currentToken || Date.now() >= currentExpiry) return;
-    const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
+    const learningFolderId = 'appdata'; // Hidden application data sandbox
     const filename = 'learning_data.db';
     try {
       setSyncStatus('syncing');
@@ -186,7 +349,7 @@ export function useGoogleDriveSync(
 
   const downloadLearningTopicsFromDrive = async (token: string) => {
     if (!token) return;
-    const learningFolderId = '1_8_h0G4122Ls4Srrcf23z2ea9Y8WzXRQ';
+    const learningFolderId = 'appdata'; // Hidden application data sandbox
     const filename = 'learning_data.db';
     try {
       setSyncStatus('syncing');
@@ -226,14 +389,12 @@ export function useGoogleDriveSync(
       let uploadResult;
       if (entry.googleFileId) {
         try {
-          uploadResult = await GoogleDriveSync.updateGoogleDoc(token, entry.googleFileId, entry.title, entry.content, entry.imageUrl);
-          // Note: In a fully typed version, we'd need an updated setEntries or single entry update
-          // This part might need adjustment depending on how setEntries is used in App.jsx
+          uploadResult = await GoogleDriveSync.updateGoogleDoc(token, entry.googleFileId, entry.title, entry.content, entry.imageUrl, entry.mood, entry.weather);
           setSyncStatus('synced');
           triggerToast(`"${entry.title}" updated on Google Drive!`, 'success');
         } catch (updateErr: any) {
           if (updateErr.status === 404) {
-            uploadResult = await GoogleDriveSync.createGoogleDoc(token, folderId, entry.title, entry.content, entry.imageUrl);
+            uploadResult = await GoogleDriveSync.createGoogleDoc(token, folderId, entry.title, entry.content, entry.imageUrl, entry.mood, entry.weather);
             setSyncStatus('synced');
             triggerToast(`"${entry.title}" recreated on Google Drive!`, 'success');
           } else {
@@ -241,9 +402,16 @@ export function useGoogleDriveSync(
           }
         }
       } else {
-        uploadResult = await GoogleDriveSync.createGoogleDoc(token, folderId, entry.title, entry.content, entry.imageUrl);
+        uploadResult = await GoogleDriveSync.createGoogleDoc(token, folderId, entry.title, entry.content, entry.imageUrl, entry.mood, entry.weather);
         setSyncStatus('synced');
         triggerToast(`"${entry.title}" created on Google Drive!`, 'success');
+      }
+
+      if (uploadResult && uploadResult.id) {
+        await db.entries.update(entry.id, {
+          googleFileId: uploadResult.id,
+          googleLastSynced: uploadResult.modifiedTime
+        });
       }
     } catch (err: any) {
       console.error('Google Sync Error:', err);
@@ -267,6 +435,35 @@ export function useGoogleDriveSync(
     }
   };
 
+  const handleConnectGoogle = () => {
+    if (!googleClientId) {
+      triggerToast('Google Client ID is not configured. Please add it to your environment variables or settings.', 'error');
+      return;
+    }
+    // On-demand initialization if the library loaded after mount
+    if (!tokenClientRef.current && typeof window !== 'undefined' && window.google) {
+      initializeTokenClient();
+    }
+    if (tokenClientRef.current) {
+      tokenClientRef.current.requestAccessToken(); // Opens the beautiful pop-up!
+    } else {
+      triggerToast('Google Identity library is still loading. Please try again in a moment.', 'info');
+    }
+  };
+
+  const handleDisconnectGoogle = () => {
+    setGoogleAccessToken('');
+    setGoogleTokenExpiry(0);
+    setGoogleFolderId('');
+    setGoogleUserProfile(null);
+    sessionStorage.removeItem('solace_google_access_token');
+    sessionStorage.removeItem('solace_google_token_expiry');
+    localStorage.removeItem('solace_google_folder_id');
+    localStorage.removeItem('solace_google_connected');
+    localStorage.removeItem('solace_google_profile');
+    triggerToast('Google Drive disconnected.', 'info');
+  };
+
   return {
     googleClientId, setGoogleClientId,
     googleClientSecret, setGoogleClientSecret,
@@ -281,6 +478,9 @@ export function useGoogleDriveSync(
     syncToGoogleDrive,
     deleteFromGoogleDrive,
     googleAccessTokenRef,
-    googleTokenExpiryRef
+    googleTokenExpiryRef,
+    handleConnectGoogle,
+    handleDisconnectGoogle,
+    googleUserProfile
   };
 }

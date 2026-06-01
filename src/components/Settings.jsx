@@ -18,10 +18,6 @@ export default function Settings({
   // Google Drive states & actions
   googleClientId,
   setGoogleClientId,
-  googleClientSecret,
-  setGoogleClientSecret,
-  googleFolderId,
-  setGoogleFolderId,
   isGoogleConnected,
   onConnectGoogle,
   onDisconnectGoogle,
@@ -31,12 +27,11 @@ export default function Settings({
   const [nameVal, setNameVal] = useState(userName);
   const [pinVal, setPinVal] = useState(pin);
   const [clientIdVal, setClientIdVal] = useState(googleClientId);
-  const [clientSecretVal, setClientSecretVal] = useState(googleClientSecret);
-  const [folderIdVal, setFolderIdVal] = useState(googleFolderId);
   const [pinError, setPinError] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showDevSettings, setShowDevSettings] = useState(false);
   
   const fileInputRef = useRef(null);
 
@@ -67,9 +62,7 @@ export default function Settings({
 
   const handleSaveGoogleConfig = () => {
     setGoogleClientId(clientIdVal.trim());
-    setGoogleClientSecret(clientSecretVal.trim());
-    setGoogleFolderId(folderIdVal.trim() || '1g4ATsJ7T3ri1aPzyvzHmeP1P7L5d5DVQ');
-    triggerFeedback('Google Drive sync settings updated.');
+    triggerFeedback('Google Sync Client ID override updated.');
   };
 
   const triggerFeedback = (msg) => {
@@ -174,109 +167,88 @@ export default function Settings({
           Google Drive Sync Connection
         </h3>
 
-        {/* Sync Status Info */}
-        <div className="settings-row" style={{ paddingBottom: '1.5rem' }}>
-          <div className="settings-meta">
-            <div className="settings-title">Connection Status</div>
-            <div className="settings-desc">
-              {isGoogleConnected 
-                ? 'Your journal reflections are synced directly to Google Docs in the background.' 
-                : 'Connect to Google Drive to automatically back up your entries.'}
-            </div>
-          </div>
-          <div className="settings-control">
-            {isGoogleConnected ? (
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button 
-                  className="primary-btn" 
-                  style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}
-                  onClick={onSyncFromGoogleDrive}
-                  disabled={syncStatus === 'syncing'}
-                >
-                  <Cloud 
-                    size={16} 
-                    style={{ animation: syncStatus === 'syncing' ? 'spin 1.5s linear infinite' : 'none' }}
-                  />
-                  {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Now'}
-                </button>
-                <button 
-                  className="secondary-btn" 
-                  style={{ borderColor: 'rgba(239, 68, 68, 0.2)', color: 'hsl(0, 85%, 65%)' }}
-                  onClick={onDisconnectGoogle}
-                >
-                  <CloudOff size={16} />
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button className="primary-btn" onClick={onConnectGoogle}>
-                <Cloud size={16} />
-                Connect Google Drive
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Folder ID and Client ID Configuration */}
-        <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '1rem' }}>
-          <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Active Sync Interface */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="settings-row" style={{ borderBottom: 'none', paddingBottom: 0 }}>
             <div className="settings-meta">
-              <div className="settings-title">Google OAuth Client ID</div>
-              <div className="settings-desc">Acquired from Google Cloud Console Credentials.</div>
+              <div className="settings-title">Connection Status</div>
+              <div className="settings-desc" style={{ marginTop: '0.4rem' }}>
+                {isGoogleConnected ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--color-accent)', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <Check size={14} />
+                    Active & Synchronizing
+                  </span>
+                ) : (
+                  'Securely back up your reflections and study logs to your personal Google Drive.'
+                )}
+              </div>
+            </div>
+            <div className="settings-control">
+              {isGoogleConnected ? (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <button 
+                    className="primary-btn" 
+                    style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}
+                    onClick={onSyncFromGoogleDrive}
+                    disabled={syncStatus === 'syncing'}
+                  >
+                    <Cloud 
+                      size={16} 
+                      style={{ animation: syncStatus === 'syncing' ? 'spin 1.5s linear infinite' : 'none' }}
+                    />
+                    {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Now'}
+                  </button>
+                  <button 
+                    className="secondary-btn" 
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.2)', color: 'hsl(0, 85%, 65%)' }}
+                    onClick={onDisconnectGoogle}
+                  >
+                    <CloudOff size={16} />
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <button className="primary-btn" onClick={onConnectGoogle}>
+                  <Cloud size={16} />
+                  Connect Google Drive
+                </button>
+              )}
             </div>
           </div>
-          <input 
-            type="text" 
-            placeholder="Paste your Google OAuth Client ID here..." 
-            className="search-input" 
-            style={{ paddingLeft: '1rem', width: '100%', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
-            value={clientIdVal}
-            onChange={(e) => setClientIdVal(e.target.value)}
-          />
 
-          <div className="settings-meta" style={{ marginTop: '0.5rem' }}>
-            <div className="settings-title">Google OAuth Client Secret (Optional)</div>
-            <div className="settings-desc">Acquired alongside Client ID. Enables permanent connection by bypassing the 1-hour expiry.</div>
-          </div>
-          <input 
-            type="password" 
-            placeholder="Paste your Google OAuth Client Secret here (optional)..." 
-            className="search-input" 
-            style={{ paddingLeft: '1rem', width: '100%', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
-            value={clientSecretVal}
-            onChange={(e) => setClientSecretVal(e.target.value)}
-          />
+          {isGoogleConnected && (
+            <div 
+              className="glass-panel" 
+              style={{ 
+                padding: '1rem', 
+                fontSize: '0.8rem', 
+                color: 'var(--text-secondary)', 
+                backgroundColor: 'rgba(255, 255, 255, 0.01)',
+                lineHeight: '1.45',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem'
+              }}
+            >
+              <div>• Journals are saved as native editable Google Docs inside a visible folder named <strong style={{ color: 'var(--text-primary)' }}>"Solace Journal"</strong>.</div>
+              <div>• Study habit records and topics are securely stored as a hidden database file inside the <strong style={{ color: 'var(--text-primary)' }}>hidden application sandbox</strong>.</div>
+            </div>
+          )}
 
-          <div className="settings-meta" style={{ marginTop: '0.5rem' }}>
-            <div className="settings-title">Google Drive Folder ID</div>
-            <div className="settings-desc">Google Drive folder where docs will be synced.</div>
-          </div>
-          <input 
-            type="text" 
-            placeholder="Paste your folder ID here..." 
-            className="search-input" 
-            style={{ paddingLeft: '1rem', width: '100%', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
-            value={folderIdVal}
-            onChange={(e) => setFolderIdVal(e.target.value)}
-          />
-
-          <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: '1rem', marginTop: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '0.5rem' }}>
             <button 
               className="secondary-btn" 
-              style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+              style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem 1.25rem', fontSize: '0.8rem' }}
               onClick={() => setShowGuide(!showGuide)}
             >
               <HelpCircle size={14} />
               {showGuide ? 'Hide Setup Guide' : 'OAuth Credentials Guide'}
               {showGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
-            <button className="primary-btn" onClick={handleSaveGoogleConfig}>
-              Update API Configuration
-            </button>
           </div>
         </div>
 
-        {/* Dynamic setup guide panel */}
+        {/* 4. Collapsible dynamic setup guide panel */}
         {showGuide && (
           <div 
             className="glass-panel" 
@@ -307,8 +279,7 @@ export default function Settings({
                 <ul style={{ paddingLeft: '1rem', listStyleType: 'circle', marginTop: '0.25rem' }}>
                   <li>Choose User Type: <strong>External</strong>.</li>
                   <li>Fill in basic App Information (e.g. App Name: <em>Solace Journal</em>) and developer email, then save.</li>
-                  <li>Click Add or Remove Scopes, select <code>.../auth/drive.file</code> and <code>.../auth/drive</code>, then click save.</li>
-                  <li>Under Test Users, click <strong>Add Users</strong> and enter your Google account email.</li>
+                  <li>Under Test Users, click <strong>Add Users</strong> and enter your Google account email (and your friends' emails) to authorize them.</li>
                 </ul>
               </li>
               <li>
@@ -318,7 +289,7 @@ export default function Settings({
                   <li>Select Application Type: <strong>Web Application</strong>.</li>
                   <li>Authorized JavaScript Origins: Add <code>{window.location.origin}</code>.</li>
                   <li>Authorized Redirect URIs: Add the exact Redirect URI: <code style={{ backgroundColor: 'rgba(var(--color-accent-rgb), 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px dashed var(--color-accent)', color: 'var(--color-accent)', fontFamily: 'var(--font-mono)' }}>{window.location.origin + window.location.pathname}</code></li>
-                  <li>Click Create, copy the generated <strong>Client ID</strong> and <strong>Client Secret</strong>, and paste them into the input fields above. Click <strong>Update API Configuration</strong>!</li>
+                  <li>Click Create, copy the generated <strong>Client ID</strong>, and paste it into the manual override input below, or add it to your deployed Vercel settings as <code>VITE_GOOGLE_CLIENT_ID</code>.</li>
                 </ul>
               </li>
             </ol>

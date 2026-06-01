@@ -1,8 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   BookOpen, Compass, Award, Settings as SettingsIcon, 
-  Menu, X, Sparkles, LogOut,
-  ChevronLeft, ChevronRight, Calendar, Feather
+  Menu, X, Sparkles, LogOut, User,
+  ChevronLeft, ChevronRight, Calendar, Feather, Cloud
 } from 'lucide-react';
 
 // Import Custom Utilities & Components
@@ -48,7 +48,6 @@ export default function App() {
 
   const {
     googleClientId, setGoogleClientId,
-    googleClientSecret, setGoogleClientSecret,
     googleFolderId, setGoogleFolderId,
     googleAccessToken, setGoogleAccessToken,
     googleTokenExpiry, setGoogleTokenExpiry,
@@ -60,7 +59,10 @@ export default function App() {
     syncToGoogleDrive,
     deleteFromGoogleDrive,
     googleAccessTokenRef,
-    googleTokenExpiryRef
+    googleTokenExpiryRef,
+    handleConnectGoogle,
+    handleDisconnectGoogle,
+    googleUserProfile
   } = useGoogleDriveSync(
     entries, setEntries, entriesRef,
     learningTopics, setLearningTopics, learningTopicsRef,
@@ -83,91 +85,15 @@ export default function App() {
     AmbientAudio.setVolume(volume);
   }, [volume]);
 
+  useEffect(() => {
+    if (isGoogleConnected && currentView === 'login') {
+      setCurrentView('dashboard');
+    }
+  }, [isGoogleConnected, currentView]);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // 1. Parse URL query params for Google Auth or silent refresh
-  useEffect(() => {
-    const parseAuthAndRefresh = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      const returnedState = urlParams.get('state');
-      const savedClientId = localStorage.getItem('solace_google_client_id') || '';
-      const savedClientSecret = localStorage.getItem('solace_google_client_secret') || '';
-      const redirectUri = window.location.origin + window.location.pathname;
-
-      if (code && savedClientId) {
-        try {
-          setSyncStatus('syncing');
-          const tokens = await GoogleDriveSync.exchangeCodeForTokens(savedClientId, savedClientSecret, redirectUri, code);
-          const expiryTime = Date.now() + parseInt(tokens.expires_in) * 1000;
-          setGoogleAccessToken(tokens.access_token);
-          setGoogleTokenExpiry(expiryTime);
-          if (tokens.refresh_token) localStorage.setItem('solace_google_refresh_token', tokens.refresh_token);
-          const currentFolderId = returnedState || googleFolderId;
-          if (returnedState) {
-            setGoogleFolderId(returnedState);
-            localStorage.setItem('solace_google_folder_id', returnedState);
-          }
-          window.history.replaceState(null, null, window.location.pathname);
-          setSyncStatus('synced');
-          triggerToast('Google Drive permanently connected!', 'success');
-          handleSyncFromGoogleDrive(tokens.access_token, currentFolderId);
-          downloadLearningTopicsFromDrive(tokens.access_token);
-        } catch (err) {
-          console.error('Failed to exchange auth code:', err);
-          setSyncStatus('error');
-          triggerToast(`Failed to connect Google Drive: ${err.message}`, 'error');
-        }
-      } else {
-        const savedToken = sessionStorage.getItem('solace_google_access_token');
-        const savedExpiry = sessionStorage.getItem('solace_google_token_expiry');
-        const savedRefreshToken = localStorage.getItem('solace_google_refresh_token');
-        if (savedToken && savedExpiry && Date.now() < parseInt(savedExpiry)) {
-          setGoogleAccessToken(savedToken);
-          setGoogleTokenExpiry(parseInt(savedExpiry));
-          handleSyncFromGoogleDrive(savedToken, googleFolderId);
-          downloadLearningTopicsFromDrive(savedToken);
-        } else if (savedRefreshToken && savedClientId) {
-          try {
-            const freshTokens = await GoogleDriveSync.refreshAccessToken(savedClientId, savedClientSecret, savedRefreshToken);
-            const expiryTime = Date.now() + parseInt(freshTokens.expires_in) * 1000;
-            setGoogleAccessToken(freshTokens.access_token);
-            setGoogleTokenExpiry(expiryTime);
-            triggerToast('Background Google Drive sync resumed.', 'success');
-            handleSyncFromGoogleDrive(freshTokens.access_token, googleFolderId);
-            downloadLearningTopicsFromDrive(freshTokens.access_token);
-          } catch (err) {
-            console.error('Failed to silently refresh access token:', err);
-          }
-        }
-      }
-    };
-    parseAuthAndRefresh();
-  }, []);
-
-  // 1.5 Background Silent Token Refresher
-  useEffect(() => {
-    const savedRefreshToken = localStorage.getItem('solace_google_refresh_token');
-    if (!savedRefreshToken || !googleClientId) return;
-    const checkAndRefresh = async () => {
-      const savedExpiry = sessionStorage.getItem('solace_google_token_expiry');
-      if (!savedExpiry) return;
-      const timeRemaining = parseInt(savedExpiry) - Date.now();
-      const tenMinutes = 10 * 60 * 1000;
-      if (timeRemaining < tenMinutes) {
-        try {
-          const freshTokens = await GoogleDriveSync.refreshAccessToken(googleClientId, googleClientSecret, savedRefreshToken);
-          const expiryTime = Date.now() + parseInt(freshTokens.expires_in) * 1000;
-          setGoogleAccessToken(freshTokens.access_token);
-          setGoogleTokenExpiry(expiryTime);
-        } catch (err) {
-          console.error('Failed to background refresh Google access token:', err);
-        }
-      }
-    };
-    const interval = setInterval(checkAndRefresh, 60 * 1000);
-    return () => clearInterval(interval);
-  }, [googleClientId, googleClientSecret]);
+  // Google OAuth connection, mount-checks, and background silent refreshes are fully handled by the useGoogleDriveSync hook
 
   // Wrapper for updating topics locally and triggering background auto-sync to cloud
   const updateAndSyncLearningTopics = (newTopicsOrUpdater) => {
@@ -226,24 +152,7 @@ export default function App() {
     return false;
   };
 
-  const handleConnectGoogle = () => {
-    if (!googleClientId) {
-      alert('Please configure your Google Client ID inside settings before connecting.');
-      setCurrentView('settings');
-      return;
-    }
-    const redirectUri = window.location.origin + window.location.pathname;
-    window.location.href = GoogleDriveSync.getAuthUrl(googleClientId, redirectUri, googleFolderId);
-  };
 
-  const handleDisconnectGoogle = () => {
-    setGoogleAccessToken('');
-    setGoogleTokenExpiry(0);
-    sessionStorage.removeItem('solace_google_access_token');
-    sessionStorage.removeItem('solace_google_token_expiry');
-    localStorage.removeItem('solace_google_refresh_token');
-    triggerToast('Google Drive disconnected.', 'info');
-  };
 
   const handleImportBackup = (importedEntries) => {
     const merged = [...entries];
@@ -287,6 +196,90 @@ export default function App() {
     { id: 'settings', label: 'Settings', icon: SettingsIcon }
   ];
 
+  const renderGoogleSyncButton = (isMobile = false) => {
+    if (!googleClientId) return null;
+
+    if (isGoogleConnected && googleUserProfile) {
+      return (
+        <button 
+          onClick={() => {
+            setCurrentView('profile');
+            setIsMobileMenuOpen(false);
+          }}
+          className="google-profile-header-btn"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid var(--border-glass)',
+            color: 'var(--text-primary)',
+            padding: '0.45rem 0.8rem',
+            borderRadius: '12px',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.25s ease',
+            marginRight: isMobile ? '0.5rem' : '0',
+            width: isSidebarCollapsed && !isMobile ? '38px' : 'auto',
+            height: '38px',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
+          }}
+          title={`Logged in as ${googleUserProfile.name}. Click to view Profile.`}
+        >
+          {googleUserProfile.picture ? (
+            <img 
+              src={googleUserProfile.picture} 
+              alt={googleUserProfile.name} 
+              style={{ width: '18px', height: '18px', borderRadius: '50%', objectFit: 'cover' }}
+            />
+          ) : (
+            <User size={14} style={{ color: 'var(--text-primary)' }} />
+          )}
+          {(!isSidebarCollapsed || isMobile) && (
+            <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '100px' }}>
+              {googleUserProfile.name}
+            </span>
+          )}
+        </button>
+      );
+    }
+
+    return (
+      <button 
+        onClick={() => {
+          setCurrentView('login');
+          setIsMobileMenuOpen(false);
+        }}
+        className="google-login-header-btn"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          background: 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid var(--border-glass)',
+          color: 'var(--text-primary)',
+          padding: '0.45rem 1rem',
+          borderRadius: '12px',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'all 0.25s ease',
+          marginRight: isMobile ? '0.5rem' : '0',
+          justifyContent: 'center',
+          width: isSidebarCollapsed && !isMobile ? '38px' : 'auto',
+          height: '38px'
+        }}
+        title="Log in to your Google Account"
+      >
+        <User size={14} style={{ color: 'var(--text-muted)' }} />
+        {(!isSidebarCollapsed || isMobile) && 'Login'}
+      </button>
+    );
+  };
+
   return (
     <div className="app-container">
       <header className="mobile-header">
@@ -294,16 +287,19 @@ export default function App() {
           <Feather size={20} style={{ color: '#FCD34D' }} />
           <span>Reflections</span>
         </div>
-        <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {renderGoogleSyncButton(true)}
+          <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       {isMobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setIsMobileMenuOpen(false)} />}
 
       <aside className={`sidebar-nav ${isMobileMenuOpen ? 'open' : ''} ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div>
-          <div className="brand-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '2.5rem', gap: '0.5rem' }}>
+          <div className="brand-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '1.25rem', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Feather size={22} style={{ color: '#FCD34D' }} />
               {!isSidebarCollapsed && <span>Reflections</span>}
@@ -312,6 +308,11 @@ export default function App() {
               {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </button>
           </div>
+
+          <div style={{ padding: isSidebarCollapsed ? '0' : '0 0.5rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'center', width: '100%' }}>
+            {renderGoogleSyncButton(false)}
+          </div>
+
           <nav>
             <ul className="nav-links">
               {navigationItems.map(item => {
@@ -385,12 +386,98 @@ export default function App() {
             <Settings 
               userName={userName} setUserName={setUserName} pin={pin} setPin={setPin} isPinEnabled={isPinEnabled} setIsPinEnabled={setIsPinEnabled}
               entries={entries} onImportBackup={handleImportBackup} onClearAllData={handleClearAllData}
-              googleClientId={googleClientId} setGoogleClientId={setGoogleClientId} googleClientSecret={googleClientSecret} setGoogleClientSecret={setGoogleClientSecret}
-              googleFolderId={googleFolderId} setGoogleFolderId={setGoogleFolderId} isGoogleConnected={isGoogleConnected}
+              googleClientId={googleClientId} setGoogleClientId={setGoogleClientId}
+              isGoogleConnected={isGoogleConnected}
               onConnectGoogle={handleConnectGoogle} onDisconnectGoogle={handleDisconnectGoogle}
               onSyncFromGoogleDrive={() => { handleSyncFromGoogleDrive(googleAccessToken, googleFolderId); downloadLearningTopicsFromDrive(googleAccessToken); }}
               syncStatus={syncStatus}
             />
+          )}
+          {currentView === 'login' && (
+            <div className="glass-panel animate-fade-in" style={{ padding: '2.5rem', maxWidth: '440px', margin: '4rem auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem', textAlign: 'center', borderColor: 'var(--border-glass-active)' }}>
+              <div style={{ fontSize: '3rem', animation: 'float 4s ease-in-out infinite', marginBottom: '0.5rem' }}>☁️</div>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>Access Your Reflections</h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0.25rem 0 0.75rem 0' }}>
+                Log in with your Google account to secure your reflections, sync study habits, and enable automatic cloud backups across all of your devices.
+              </p>
+              <button 
+                className="primary-btn" 
+                onClick={handleConnectGoogle}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.65rem', 
+                  padding: '0.75rem 1.5rem', 
+                  fontSize: '0.9rem', 
+                  fontWeight: 700,
+                  background: 'var(--text-primary)',
+                  color: 'var(--bg-secondary)',
+                  boxShadow: '0 4px 20px rgba(255, 255, 255, 0.05)',
+                  cursor: 'pointer'
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                Login with Google Account
+              </button>
+              <button 
+                className="secondary-btn" 
+                onClick={() => setCurrentView('dashboard')}
+                style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {currentView === 'profile' && (
+            <div className="glass-panel animate-fade-in" style={{ padding: '3.5rem 2.5rem', maxWidth: '460px', margin: '4rem auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', borderColor: 'var(--border-glass-active)', textAlign: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                {isGoogleConnected && googleUserProfile?.picture ? (
+                  <img 
+                    src={googleUserProfile.picture} 
+                    alt={googleUserProfile.name} 
+                    style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border-glass-active)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
+                  />
+                ) : (
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', border: '1px solid var(--border-glass)' }}>👤</div>
+                )}
+                <div>
+                  <h2 style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 0.35rem 0' }}>
+                    {isGoogleConnected && googleUserProfile ? googleUserProfile.name : 'My Profile'}
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Google Connected Account
+                  </p>
+                </div>
+              </div>
+
+              {/* Minimalist Profile Section - Kept blank as requested */}
+              <div style={{ width: '100%', height: '1px', background: 'var(--border-glass)', margin: '0.5rem 0' }} />
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', width: '100%' }}>
+                <button 
+                  className="primary-btn" 
+                  onClick={() => setCurrentView('dashboard')}
+                  style={{ justifyContent: 'center', width: '100%', padding: '0.75rem' }}
+                >
+                  Back to Dashboard
+                </button>
+                
+                {isGoogleConnected && (
+                  <button 
+                    className="secondary-btn" 
+                    onClick={() => { handleDisconnectGoogle(); setCurrentView('dashboard'); }}
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.2)', color: 'hsl(0, 85%, 65%)', justifyContent: 'center', width: '100%', padding: '0.75rem' }}
+                  >
+                    Disconnect Google Account
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </Suspense>
       </main>

@@ -21,7 +21,7 @@ describe('useJournalEntries', () => {
     const { result } = renderHook(() => useJournalEntries());
     
     await waitFor(() => expect(result.current.isMigrated).toBe(true));
-    expect(result.current.entries.length).toBeGreaterThan(0);
+    await waitFor(() => expect(result.current.entries.length).toBeGreaterThan(0));
   });
 
   it('should save a new entry', async () => {

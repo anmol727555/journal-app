@@ -38,12 +38,16 @@ export function useJournalEntries() {
 
   useEffect(() => {
     const init = async () => {
-      await migrateFromLocalStorage();
-      const count = await db.entries.count();
-      if (count === 0) {
-        await db.entries.bulkAdd(DEFAULT_JOURNALS);
+      try {
+        await migrateFromLocalStorage();
+        const count = await db.entries.count();
+        if (count === 0) {
+          await db.entries.bulkAdd(DEFAULT_JOURNALS);
+        }
+        setIsMigrated(true);
+      } catch (err) {
+        console.error('Failed to initialize journal database:', err);
       }
-      setIsMigrated(true);
     };
     init();
   }, []);
