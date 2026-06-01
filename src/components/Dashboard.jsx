@@ -323,7 +323,12 @@ export default function Dashboard({
                 {monthEntries.map((e) => {
                   const isActive = e.id === activeId;
                   const wordCountText = e.wordCount > 0 ? `${e.wordCount} words` : '';
-                  const truncatedPreview = e.content ? e.content.replace(/>\s*Prompt:[^\n]*\n?/g, '') : '';
+                  
+                  // Strip HTML for preview
+                  const tempDiv = document.createElement('div');
+                  tempDiv.innerHTML = e.content || '';
+                  const plainText = tempDiv.textContent || tempDiv.innerText || '';
+                  const truncatedPreview = plainText.substring(0, 100);
                   
                   return (
                     <div 
@@ -505,27 +510,10 @@ export default function Dashboard({
               {/* Body text content */}
               <article className={`detail-body-text font-${activeEntry.fontType || 'sans'}`}>
                 {activeEntry.content ? (
-                  activeEntry.content.split('\n').map((para, idx) => {
-                    // Check if paragraph is an AI/writing prompt
-                    if (para.trim().startsWith('> Prompt:')) {
-                      return (
-                        <blockquote 
-                          key={idx} 
-                          style={{
-                            borderLeft: '3px solid var(--color-accent)',
-                            paddingLeft: '1rem',
-                            margin: '1.25rem 0',
-                            color: 'var(--text-secondary)',
-                            fontStyle: 'italic',
-                            fontSize: '0.98rem'
-                          }}
-                        >
-                          {para.replace(/^>\s*/, '')}
-                        </blockquote>
-                      );
-                    }
-                    return para.trim() ? <p key={idx} style={{ marginBottom: '1.25rem' }}>{para}</p> : null;
-                  })
+                  <div 
+                    className="tiptap-content-view"
+                    dangerouslySetInnerHTML={{ __html: activeEntry.content }}
+                  />
                 ) : (
                   <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>This reflection has no body text yet. Click edit below to log your thoughts.</p>
                 )}

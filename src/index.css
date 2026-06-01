@@ -3183,3 +3183,70 @@ input:checked + .slider-round:before {
 }
 
 
+
+/* --- TipTap Editor Styles --- */
+.tiptap-editor-container {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.editor-menubar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+}
+
+.editor-menubar button {
+  padding: 0.35rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.editor-menubar button:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.editor-menubar button.is-active {
+  background: var(--color-accent);
+  color: white;
+}
+
+.editor-content {
+  min-height: 400px;
+  padding: 1rem 0;
+  outline: none;
+}
+
+.editor-content p {
+  margin-bottom: 1rem;
+}
+
+.editor-content.font-serif {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+}
+
+.editor-content.font-mono {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+/* TipTap Content View in Dashboard */
+.tiptap-content-view p {
+  margin-bottom: 1rem;
+}
+
+.tiptap-content-view a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
